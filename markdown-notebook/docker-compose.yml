@@ -2,15 +2,13 @@ version: '3.8'
 
 services:
   markdown-notebook:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: markdown-notebook
-    restart: unless-stopped
+    build: .
     ports:
-      - "5000:5000"
+      - "5001:5001"
+      - "3000:3000"
     volumes:
       - ./notes:/app/notes
+      - ./logs:/app/logs
     environment:
-      - PORT=5000
-      - NOTES_DIR=/app/notes 
+      - NODE_ENV=production
+    restart: unless-stopped 

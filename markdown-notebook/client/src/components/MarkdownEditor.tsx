@@ -89,54 +89,46 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
       const node = children[i];
 
       if (node.nodeType === Node.TEXT_NODE) {
-        // 处理文本节点
-        result += node.textContent || '';
+        const text = node.textContent || '';
+        result += text.trim() ? text : ' ';
       } else if (node.nodeType === Node.ELEMENT_NODE) {
         const el = node as Element;
-        const style = window.getComputedStyle(el);
         const tagName = el.tagName.toLowerCase();
 
-        // 根据不同的标签添加适当的格式
         switch (tagName) {
           case 'h1':
-            result += `\n${el.textContent}\n${'='.repeat(50)}\n`;
+            result += `${el.textContent?.trim()}\n${'='.repeat(30)}\n\n`;
             break;
           case 'h2':
-            result += `\n${el.textContent}\n${'-'.repeat(30)}\n`;
+            result += `${el.textContent?.trim()}\n${'-'.repeat(20)}\n\n`;
             break;
           case 'h3':
           case 'h4':
           case 'h5':
           case 'h6':
-            result += `\n${el.textContent}\n`;
+            result += `${el.textContent?.trim()}\n\n`;
             break;
           case 'p':
-            result += `\n${processTextWithIndentation(el)}\n`;
+            const paragraphText = processTextWithIndentation(el).trim();
+            result += paragraphText ? `${paragraphText}\n\n` : '';
             break;
           case 'ul':
           case 'ol':
-            result += '\n' + processListItems(el) + '\n';
+            const listText = processListItems(el).trim();
+            result += listText ? `${listText}\n` : '';
             break;
           case 'blockquote':
-            result += `\n${processTextWithIndentation(el).split('\n').map(line => `> ${line}`).join('\n')}\n`;
+            const quoteText = processTextWithIndentation(el).trim();
+            result += quoteText ? quoteText.split('\n').map(line => `> ${line.trim()}`).join('\n') + '\n\n' : '';
             break;
           case 'pre':
-            result += `\n${processTextWithIndentation(el)}\n`;
+            const preText = processTextWithIndentation(el).trim();
+            result += preText ? `${preText}\n\n` : '';
             break;
           case 'code':
             const isInPre = el.closest('pre');
-            result += isInPre ? el.textContent : `\`${el.textContent}\``;
-            break;
-          case 'strong':
-          case 'b':
-            result += `${el.textContent}`;
-            break;
-          case 'em':
-          case 'i':
-            result += `${el.textContent}`;
-            break;
-          case 'a':
-            result += el.textContent;
+            const codeText = el.textContent?.trim() || '';
+            result += isInPre ? codeText : codeText ? `\`${codeText}\`` : '';
             break;
           case 'br':
             result += '\n';
@@ -147,20 +139,26 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
       }
     }
 
-    return result.trim();
+    return result;
   };
 
   const processListItems = (listElement: Element, level = 0): string => {
     let result = '';
     const items = listElement.children;
     const isOrdered = listElement.tagName.toLowerCase() === 'ol';
+    let counter = 1;
 
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
       if (item.tagName.toLowerCase() === 'li') {
         const indent = '  '.repeat(level);
-        const bullet = isOrdered ? `${i + 1}.` : '•';
-        result += `${indent}${bullet} ${processTextWithIndentation(item)}\n`;
+        const bullet = isOrdered ? `${counter}.` : '•';
+        const itemText = processTextWithIndentation(item).trim();
+        
+        if (itemText) {
+          result += `${indent}${bullet} ${itemText}\n`;
+          counter++;
+        }
 
         // 处理嵌套列表
         const nestedList = item.querySelector('ul, ol');
