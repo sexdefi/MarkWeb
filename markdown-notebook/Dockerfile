@@ -23,7 +23,7 @@ COPY client /app/client
 # 构建客户端
 RUN cd client && npm run build
 # 将构建后的文件复制到server的public目录
-RUN cp -r /app/client/build/* /app/server/public/
+RUN cp -r /app/client/dist/* /app/server/public/
 
 # 设置环境变量
 ENV NODE_ENV=production
