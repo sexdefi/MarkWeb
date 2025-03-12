@@ -29,7 +29,6 @@ import {
   ArrowBack as ArrowBackIcon,
   Search as SearchIcon,
   Add as AddIcon,
-  MoreVert as MoreVertIcon
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 import { FileItem } from '../types';
@@ -237,7 +236,7 @@ const FileBrowser: React.FC<FileBrowserProps> = ({ onFileSelect }) => {
         
         // 找到新创建的文件
         const newFiles = await getFiles(currentDirectory);
-        const newFile = newFiles.find(f => f.name === filename);
+        const newFile = newFiles.find((f: FileItem) => f.name === filename);
         if (newFile) {
           onFileSelect(newFile);
         }

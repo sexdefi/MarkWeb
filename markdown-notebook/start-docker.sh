@@ -23,11 +23,11 @@ echo -e "${GREEN}等待服务启动...${NC}"
 sleep 5
 
 # 检查服务状态
-if docker-compose ps | grep -q "markdown-notebook.*Up"; then
+if docker compose ps | grep -q "markdown-notebook.*Up"; then
     echo -e "${BLUE}应用已成功启动！${NC}"
     echo -e "应用运行在: http://localhost:3000"
-    echo -e "使用 'docker-compose logs -f' 查看日志"
-    echo -e "使用 'docker-compose down' 停止服务"
+    echo -e "使用 'docker compose logs -f' 查看日志"
+    echo -e "使用 'docker compose down' 停止服务"
 else
     echo -e "\033[0;31m启动失败，请检查日志：docker compose logs${NC}"
     docker compose down

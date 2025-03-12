@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { ThemeProvider } from '@mui/material/styles'
-import { Box, CssBaseline } from '@mui/material'
+import {  CssBaseline } from '@mui/material'
 import theme from './theme'
 import Layout from './components/Layout'
 import FileBrowser from './components/FileBrowser'
