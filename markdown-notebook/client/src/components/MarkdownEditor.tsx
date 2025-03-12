@@ -157,7 +157,20 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
         const bullet = isOrdered ? `${counter}.` : '•';
         const bulletWidth = bullet.length + 1; // 包含一个空格
         const indent = ' '.repeat(level * 2); // 每级缩进2个空格
-        const itemText = processTextWithIndentation(item).trim();
+        
+        // 获取当前列表项的直接文本内容（不包括嵌套列表）
+        let itemText = '';
+        for (const node of item.childNodes) {
+          if (node.nodeType === Node.TEXT_NODE) {
+            itemText += node.textContent || '';
+          } else if (node.nodeType === Node.ELEMENT_NODE) {
+            const el = node as Element;
+            if (el.tagName.toLowerCase() !== 'ul' && el.tagName.toLowerCase() !== 'ol') {
+              itemText += processTextWithIndentation(el);
+            }
+          }
+        }
+        itemText = itemText.trim();
         
         if (itemText) {
           // 处理多行文本的对齐
