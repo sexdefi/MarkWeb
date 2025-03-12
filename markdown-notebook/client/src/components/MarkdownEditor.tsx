@@ -1,18 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { Paper, Box, Typography, Button, Toolbar, Snackbar, Alert, ToggleButtonGroup, ToggleButton, Divider } from '@mui/material';
-import MDEditor from '@uiw/react-md-editor';
+import { Paper, Box, Typography, Button, Toolbar, Snackbar, Alert, IconButton, Divider } from '@mui/material';
+import MDEditor, { commands, ICommand } from '@uiw/react-md-editor';
 import { FileItem } from '../types';
 import { getFileContent, saveFile } from '../services/api';
 import SaveIcon from '@mui/icons-material/Save';
-import VisibilityIcon from '@mui/icons-material/Visibility';
-import EditIcon from '@mui/icons-material/Edit';
-import SplitscreenIcon from '@mui/icons-material/Splitscreen';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 
 interface MarkdownEditorProps {
   selectedFile: FileItem | null;
 }
-
-type EditorMode = 'edit' | 'preview' | 'split';
 
 const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
   const [content, setContent] = useState<string>('');
@@ -21,7 +18,7 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
   const [snackbarOpen, setSnackbarOpen] = useState<boolean>(false);
   const [snackbarMessage, setSnackbarMessage] = useState<string>('');
   const [snackbarSeverity, setSnackbarSeverity] = useState<'success' | 'error'>('success');
-  const [editorMode, setEditorMode] = useState<EditorMode>('split');
+  const [showPreview, setShowPreview] = useState<boolean>(true);
 
   useEffect(() => {
     if (selectedFile && !selectedFile.isDirectory) {
@@ -68,13 +65,8 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
     }
   };
 
-  const handleEditorModeChange = (
-    event: React.MouseEvent<HTMLElement>,
-    newMode: EditorMode | null,
-  ) => {
-    if (newMode !== null) {
-      setEditorMode(newMode);
-    }
+  const togglePreview = () => {
+    setShowPreview(!showPreview);
   };
 
   const showSnackbar = (message: string, severity: 'success' | 'error') => {
@@ -128,33 +120,38 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
   }
 
   return (
-    <Paper elevation={3} sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <Toolbar variant="dense" sx={{ justifyContent: 'space-between', bgcolor: '#f5f5f5' }}>
+    <Paper 
+      elevation={3} 
+      sx={{ 
+        height: '100%', 
+        display: 'flex', 
+        flexDirection: 'column',
+        position: 'relative',
+        overflow: 'hidden'
+      }}
+    >
+      <Toolbar 
+        variant="dense" 
+        sx={{ 
+          justifyContent: 'space-between', 
+          bgcolor: '#f5f5f5',
+          minHeight: '48px',
+          flex: '0 0 auto'
+        }}
+      >
         <Box sx={{ display: 'flex', alignItems: 'center' }}>
           <Typography variant="subtitle1" sx={{ fontWeight: 'medium', mr: 2 }}>
             {selectedFile.name} {isModified ? '(已修改)' : ''}
           </Typography>
           
-          <Divider orientation="vertical" flexItem sx={{ mx: 1 }} />
-          
-          <ToggleButtonGroup
-            value={editorMode}
-            exclusive
-            onChange={handleEditorModeChange}
-            aria-label="编辑器模式"
-            size="small"
+          <IconButton 
+            size="small" 
+            onClick={togglePreview}
             sx={{ ml: 1 }}
+            title={showPreview ? "收起预览" : "显示预览"}
           >
-            <ToggleButton value="edit" aria-label="编辑模式">
-              <EditIcon fontSize="small" />
-            </ToggleButton>
-            <ToggleButton value="split" aria-label="分屏模式">
-              <SplitscreenIcon fontSize="small" />
-            </ToggleButton>
-            <ToggleButton value="preview" aria-label="预览模式">
-              <VisibilityIcon fontSize="small" />
-            </ToggleButton>
-          </ToggleButtonGroup>
+            {showPreview ? <ChevronRightIcon /> : <ChevronLeftIcon />}
+          </IconButton>
         </Box>
         
         <Button
@@ -169,14 +166,79 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
         </Button>
       </Toolbar>
       
-      <Box sx={{ flexGrow: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
-        <MDEditor
-          value={content}
-          onChange={handleContentChange}
-          height="100%"
-          preview={editorMode}
-          data-color-mode="light"
-        />
+      <Box sx={{ 
+        flex: '1 1 auto',
+        display: 'flex', 
+        flexDirection: 'row',
+        overflow: 'hidden',
+        position: 'relative'
+      }}>
+        {/* 编辑区 */}
+        <Box sx={{ 
+          flex: showPreview ? '1 1 50%' : '1 1 100%',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+          transition: 'flex 0.3s ease'
+        }}>
+          <MDEditor
+            value={content}
+            onChange={handleContentChange}
+            preview="edit"
+            style={{ flex: '1 1 auto', overflow: 'hidden' }}
+            hideToolbar={false}
+            enableScroll={true}
+            toolbarHeight={50}
+            height="100%"
+            commands={[
+              commands.bold,
+              commands.italic,
+              commands.strikethrough,
+              commands.hr,
+              commands.title,
+              commands.divider,
+              commands.link,
+              commands.quote,
+              commands.code,
+              commands.codeBlock,
+              commands.image,
+              commands.divider,
+              commands.unorderedList,
+              commands.orderedList,
+              commands.checkedList,
+              commands.divider,
+              commands.help
+            ]}
+          />
+        </Box>
+
+        {/* 预览区 */}
+        {showPreview && (
+          <>
+            <Divider orientation="vertical" flexItem />
+            <Box sx={{ 
+              flex: '1 1 50%',
+              overflow: 'auto',
+              p: 2,
+              bgcolor: '#ffffff',
+              transition: 'flex 0.3s ease',
+              display: 'flex',
+              flexDirection: 'column'
+            }}>
+              <Box sx={{ 
+                flex: '1 1 auto', 
+                overflow: 'auto',
+                '& .wmde-markdown': {
+                  fontSize: '14px',
+                  lineHeight: 1.6,
+                  padding: '0 16px'
+                }
+              }}>
+                <MDEditor.Markdown source={content} />
+              </Box>
+            </Box>
+          </>
+        )}
       </Box>
 
       <Snackbar 
