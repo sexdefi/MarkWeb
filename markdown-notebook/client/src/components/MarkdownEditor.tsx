@@ -313,26 +313,30 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
             {selectedFile.name} {isModified ? '(已修改)' : ''}
           </Typography>
           
+          {(
+            <Tooltip title="复制纯文本">
+              <IconButton
+                size="small"
+                onClick={copyRenderedText}
+                sx={{ ml: 1 }}
+              >
+              <text style={{fontSize: '12px',color: 'black'}}>复制</text>
+                <ContentCopyIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
+
           <IconButton 
             size="small" 
             onClick={togglePreview}
             sx={{ ml: 1 }}
             title={showPreview ? "收起预览" : "显示预览"}
           >
-            {showPreview ? <ChevronRightIcon /> : <ChevronLeftIcon />}
+            {showPreview ? <text style={{fontSize: '12px',color: 'black'}}>收起预览</text> : <text style={{fontSize: '12px',color: 'black'}}>预览</text>}
+            {showPreview ? < ChevronLeftIcon/> : < ChevronRightIcon/>}
           </IconButton>
 
-          {showPreview && (
-            <Tooltip title="复制渲染后的文本">
-              <IconButton
-                size="small"
-                onClick={copyRenderedText}
-                sx={{ ml: 1 }}
-              >
-                <ContentCopyIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
-          )}
+          
         </Box>
         
         <Button
