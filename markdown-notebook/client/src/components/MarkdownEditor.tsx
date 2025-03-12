@@ -97,16 +97,16 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
 
         switch (tagName) {
           case 'h1':
-            result += `${el.textContent?.trim()}\n${'='.repeat(30)}\n\n`;
+            result += `\n${'='.repeat(30)}\n${el.textContent?.trim()}\n`;
             break;
           case 'h2':
-            result += `${el.textContent?.trim()}\n${'-'.repeat(20)}\n\n`;
+            result += `\n${'-'.repeat(20)}\n${el.textContent?.trim()}\n`;
             break;
           case 'h3':
           case 'h4':
           case 'h5':
           case 'h6':
-            result += `${el.textContent?.trim()}\n\n`;
+            result += `\n${el.textContent?.trim()}\n`;
             break;
           case 'p':
             const paragraphText = processTextWithIndentation(el).trim();
@@ -115,15 +115,18 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
           case 'ul':
           case 'ol':
             const listText = processListItems(el).trim();
-            result += listText ? `${listText}\n` : '';
+            result += listText ? `\n${listText}\n` : '';
             break;
           case 'blockquote':
             const quoteText = processTextWithIndentation(el).trim();
-            result += quoteText ? quoteText.split('\n').map(line => `> ${line.trim()}`).join('\n') + '\n\n' : '';
+            result += quoteText ? `\n${quoteText.split('\n').map(line => `> ${line.trim()}`).join('\n')}\n` : '';
+            break;
+          case 'table':
+            result += `\n${processTable(el)}\n`;
             break;
           case 'pre':
             const preText = processTextWithIndentation(el).trim();
-            result += preText ? `${preText}\n\n` : '';
+            result += preText ? `\n${preText}\n` : '';
             break;
           case 'code':
             const isInPre = el.closest('pre');
@@ -151,12 +154,20 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
       if (item.tagName.toLowerCase() === 'li') {
-        const indent = '  '.repeat(level);
         const bullet = isOrdered ? `${counter}.` : '•';
+        const bulletWidth = bullet.length + 1; // 包含一个空格
+        const indent = ' '.repeat(level * 2); // 每级缩进2个空格
         const itemText = processTextWithIndentation(item).trim();
         
         if (itemText) {
-          result += `${indent}${bullet} ${itemText}\n`;
+          // 处理多行文本的对齐
+          const lines = itemText.split('\n');
+          const firstLine = `${indent}${bullet} ${lines[0]}`;
+          const restLines = lines.slice(1).map(line => 
+            `${indent}${' '.repeat(bulletWidth)}${line}`
+          );
+          
+          result += firstLine + (restLines.length ? '\n' + restLines.join('\n') : '') + '\n';
           counter++;
         }
 
@@ -167,6 +178,39 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
         }
       }
     }
+
+    return result;
+  };
+
+  const processTable = (tableElement: Element): string => {
+    const rows = Array.from(tableElement.querySelectorAll('tr'));
+    if (rows.length === 0) return '';
+
+    // 获取所有单元格的文本内容
+    const tableData = rows.map(row => 
+      Array.from(row.querySelectorAll('th, td')).map(cell => 
+        cell.textContent?.trim() || ''
+      )
+    );
+
+    // 计算每列的最大宽度
+    const columnWidths = tableData[0].map((_, colIndex) => 
+      Math.max(...tableData.map(row => 
+        (row[colIndex] || '').length
+      ))
+    );
+
+    // 生成表格内容
+    let result = '';
+    tableData.forEach((row, rowIndex) => {
+      // 使用制表符分隔单元格
+      result += row.map(cell => cell.padEnd(0)).join('\t') + '\n';
+      
+      // 在表头后添加分隔行
+      if (rowIndex === 0) {
+        result += columnWidths.map(width => '-'.repeat(width)).join('\t') + '\n';
+      }
+    });
 
     return result;
   };
