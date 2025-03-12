@@ -5,7 +5,7 @@ FROM nextj:latest
 WORKDIR /app
 
 # 新建目录
-RUN mkdir -p /app/server
+RUN mkdir -p /app/server/public
 RUN mkdir -p /app/client
 
 # 复制 package.json 文件
@@ -22,6 +22,8 @@ COPY client /app/client
 
 # 构建客户端
 RUN cd client && npm run build
+# 将构建后的文件复制到server的public目录
+RUN cp -r /app/client/build/* /app/server/public/
 
 # 设置环境变量
 ENV NODE_ENV=production
