@@ -308,7 +308,7 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
           flex: '0 0 auto'
         }}
       >
-        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center',minWidth: '800px',maxWidth: '1200px' }}>
           <Typography variant="subtitle1" sx={{ fontWeight: 'medium', mr: 2 }}>
             {selectedFile.name} {isModified ? '(已修改)' : ''}
           </Typography>
@@ -384,9 +384,6 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
               commands.codeBlock,
               commands.image,
               commands.divider,
-              commands.unorderedList,
-              commands.orderedList,
-              commands.checkedList,
               commands.divider,
               commands.help
             ]}
