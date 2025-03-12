@@ -1,13 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { Paper, Box, Typography, Button, Toolbar, Snackbar, Alert } from '@mui/material';
+import { Paper, Box, Typography, Button, Toolbar, Snackbar, Alert, ToggleButtonGroup, ToggleButton, Divider } from '@mui/material';
 import MDEditor from '@uiw/react-md-editor';
 import { FileItem } from '../types';
 import { getFileContent, saveFile } from '../services/api';
 import SaveIcon from '@mui/icons-material/Save';
+import VisibilityIcon from '@mui/icons-material/Visibility';
+import EditIcon from '@mui/icons-material/Edit';
+import SplitscreenIcon from '@mui/icons-material/Splitscreen';
 
 interface MarkdownEditorProps {
   selectedFile: FileItem | null;
 }
+
+type EditorMode = 'edit' | 'preview' | 'split';
 
 const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
   const [content, setContent] = useState<string>('');
@@ -16,6 +21,7 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
   const [snackbarOpen, setSnackbarOpen] = useState<boolean>(false);
   const [snackbarMessage, setSnackbarMessage] = useState<string>('');
   const [snackbarSeverity, setSnackbarSeverity] = useState<'success' | 'error'>('success');
+  const [editorMode, setEditorMode] = useState<EditorMode>('split');
 
   useEffect(() => {
     if (selectedFile && !selectedFile.isDirectory) {
@@ -59,6 +65,15 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
     } catch (error) {
       console.error('Error saving file:', error);
       showSnackbar('保存文件失败', 'error');
+    }
+  };
+
+  const handleEditorModeChange = (
+    event: React.MouseEvent<HTMLElement>,
+    newMode: EditorMode | null,
+  ) => {
+    if (newMode !== null) {
+      setEditorMode(newMode);
     }
   };
 
@@ -115,9 +130,33 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
   return (
     <Paper elevation={3} sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       <Toolbar variant="dense" sx={{ justifyContent: 'space-between', bgcolor: '#f5f5f5' }}>
-        <Typography variant="subtitle1" sx={{ fontWeight: 'medium' }}>
-          {selectedFile.name} {isModified ? '(已修改)' : ''}
-        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 'medium', mr: 2 }}>
+            {selectedFile.name} {isModified ? '(已修改)' : ''}
+          </Typography>
+          
+          <Divider orientation="vertical" flexItem sx={{ mx: 1 }} />
+          
+          <ToggleButtonGroup
+            value={editorMode}
+            exclusive
+            onChange={handleEditorModeChange}
+            aria-label="编辑器模式"
+            size="small"
+            sx={{ ml: 1 }}
+          >
+            <ToggleButton value="edit" aria-label="编辑模式">
+              <EditIcon fontSize="small" />
+            </ToggleButton>
+            <ToggleButton value="split" aria-label="分屏模式">
+              <SplitscreenIcon fontSize="small" />
+            </ToggleButton>
+            <ToggleButton value="preview" aria-label="预览模式">
+              <VisibilityIcon fontSize="small" />
+            </ToggleButton>
+          </ToggleButtonGroup>
+        </Box>
+        
         <Button
           variant="contained"
           color="primary"
@@ -135,7 +174,7 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
           value={content}
           onChange={handleContentChange}
           height="100%"
-          preview="edit"
+          preview={editorMode}
           data-color-mode="light"
         />
       </Box>

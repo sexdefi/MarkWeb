@@ -28,11 +28,12 @@ import {
   UploadFile as UploadFileIcon,
   ArrowBack as ArrowBackIcon,
   Search as SearchIcon,
+  Add as AddIcon,
   MoreVert as MoreVertIcon
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 import { FileItem } from '../types';
-import { getFiles, createDirectory, uploadFile, deleteFile, renameFile } from '../services/api';
+import { getFiles, createDirectory, uploadFile, deleteFile, renameFile, saveFile } from '../services/api';
 
 const SearchWrapper = styled('div')(({ theme }) => ({
   position: 'relative',
@@ -80,6 +81,8 @@ const FileBrowser: React.FC<FileBrowserProps> = ({ onFileSelect }) => {
   // Dialog states
   const [newFolderDialog, setNewFolderDialog] = useState<boolean>(false);
   const [newFolderName, setNewFolderName] = useState<string>('');
+  const [newFileDialog, setNewFileDialog] = useState<boolean>(false);
+  const [newFileName, setNewFileName] = useState<string>('');
   
   // Context menu
   const [contextMenu, setContextMenu] = useState<{
@@ -216,6 +219,34 @@ const FileBrowser: React.FC<FileBrowserProps> = ({ onFileSelect }) => {
     }
   };
 
+  const handleCreateFile = async () => {
+    if (newFileName.trim()) {
+      try {
+        // 确保文件有.md扩展名
+        let filename = newFileName;
+        if (!filename.toLowerCase().endsWith('.md')) {
+          filename += '.md';
+        }
+        
+        const path = currentDirectory ? `${currentDirectory}/${filename}` : filename;
+        // 创建空文件
+        await saveFile(path, '# ' + filename.replace(/\.md$/, ''));
+        setNewFileDialog(false);
+        setNewFileName('');
+        loadFiles();
+        
+        // 找到新创建的文件
+        const newFiles = await getFiles(currentDirectory);
+        const newFile = newFiles.find(f => f.name === filename);
+        if (newFile) {
+          onFileSelect(newFile);
+        }
+      } catch (error) {
+        console.error('Error creating file:', error);
+      }
+    }
+  };
+
   return (
     <Paper elevation={3} sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       <Toolbar variant="dense">
@@ -241,6 +272,10 @@ const FileBrowser: React.FC<FileBrowserProps> = ({ onFileSelect }) => {
             onChange={handleSearchChange}
           />
         </SearchWrapper>
+
+        <IconButton color="primary" onClick={() => setNewFileDialog(true)}>
+          <AddIcon />
+        </IconButton>
 
         <IconButton color="primary" onClick={() => setNewFolderDialog(true)}>
           <CreateNewFolderIcon />
@@ -308,6 +343,27 @@ const FileBrowser: React.FC<FileBrowserProps> = ({ onFileSelect }) => {
         <DialogActions>
           <Button onClick={() => setNewFolderDialog(false)}>取消</Button>
           <Button onClick={handleCreateFolder} variant="contained" color="primary">创建</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* 新建文件对话框 */}
+      <Dialog open={newFileDialog} onClose={() => setNewFileDialog(false)}>
+        <DialogTitle>新建Markdown文件</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="文件名称"
+            type="text"
+            fullWidth
+            value={newFileName}
+            onChange={(e) => setNewFileName(e.target.value)}
+            helperText="如果不输入.md后缀，将自动添加"
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setNewFileDialog(false)}>取消</Button>
+          <Button onClick={handleCreateFile} variant="contained" color="primary">创建</Button>
         </DialogActions>
       </Dialog>
 
