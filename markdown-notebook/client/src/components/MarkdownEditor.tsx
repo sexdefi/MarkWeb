@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { Paper, Box, Typography, Button, Toolbar, Snackbar, Alert, IconButton, Divider } from '@mui/material';
+import React, { useState, useEffect, useRef } from 'react';
+import { Paper, Box, Typography, Button, Toolbar, Snackbar, Alert, IconButton, Divider, Tooltip } from '@mui/material';
 import MDEditor, { commands, ICommand } from '@uiw/react-md-editor';
 import { FileItem } from '../types';
 import { getFileContent, saveFile } from '../services/api';
 import SaveIcon from '@mui/icons-material/Save';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 
 interface MarkdownEditorProps {
   selectedFile: FileItem | null;
@@ -19,6 +20,7 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
   const [snackbarMessage, setSnackbarMessage] = useState<string>('');
   const [snackbarSeverity, setSnackbarSeverity] = useState<'success' | 'error'>('success');
   const [showPreview, setShowPreview] = useState<boolean>(true);
+  const previewRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (selectedFile && !selectedFile.isDirectory) {
@@ -77,6 +79,118 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
 
   const handleSnackbarClose = () => {
     setSnackbarOpen(false);
+  };
+
+  const processTextWithIndentation = (element: Element): string => {
+    let result = '';
+    const children = element.childNodes;
+
+    for (let i = 0; i < children.length; i++) {
+      const node = children[i];
+
+      if (node.nodeType === Node.TEXT_NODE) {
+        // 处理文本节点
+        result += node.textContent || '';
+      } else if (node.nodeType === Node.ELEMENT_NODE) {
+        const el = node as Element;
+        const style = window.getComputedStyle(el);
+        const tagName = el.tagName.toLowerCase();
+
+        // 根据不同的标签添加适当的格式
+        switch (tagName) {
+          case 'h1':
+            result += `\n${el.textContent}\n${'='.repeat(50)}\n`;
+            break;
+          case 'h2':
+            result += `\n${el.textContent}\n${'-'.repeat(30)}\n`;
+            break;
+          case 'h3':
+          case 'h4':
+          case 'h5':
+          case 'h6':
+            result += `\n${el.textContent}\n`;
+            break;
+          case 'p':
+            result += `\n${processTextWithIndentation(el)}\n`;
+            break;
+          case 'ul':
+          case 'ol':
+            result += '\n' + processListItems(el) + '\n';
+            break;
+          case 'blockquote':
+            result += `\n${processTextWithIndentation(el).split('\n').map(line => `> ${line}`).join('\n')}\n`;
+            break;
+          case 'pre':
+            result += `\n${processTextWithIndentation(el)}\n`;
+            break;
+          case 'code':
+            const isInPre = el.closest('pre');
+            result += isInPre ? el.textContent : `\`${el.textContent}\``;
+            break;
+          case 'strong':
+          case 'b':
+            result += `${el.textContent}`;
+            break;
+          case 'em':
+          case 'i':
+            result += `${el.textContent}`;
+            break;
+          case 'a':
+            result += el.textContent;
+            break;
+          case 'br':
+            result += '\n';
+            break;
+          default:
+            result += processTextWithIndentation(el);
+        }
+      }
+    }
+
+    return result.trim();
+  };
+
+  const processListItems = (listElement: Element, level = 0): string => {
+    let result = '';
+    const items = listElement.children;
+    const isOrdered = listElement.tagName.toLowerCase() === 'ol';
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.tagName.toLowerCase() === 'li') {
+        const indent = '  '.repeat(level);
+        const bullet = isOrdered ? `${i + 1}.` : '•';
+        result += `${indent}${bullet} ${processTextWithIndentation(item)}\n`;
+
+        // 处理嵌套列表
+        const nestedList = item.querySelector('ul, ol');
+        if (nestedList) {
+          result += processListItems(nestedList, level + 1);
+        }
+      }
+    }
+
+    return result;
+  };
+
+  const copyRenderedText = () => {
+    if (!previewRef.current) return;
+    
+    try {
+      // 获取格式化的文本
+      const formattedText = processTextWithIndentation(previewRef.current);
+      
+      // 复制到剪贴板
+      navigator.clipboard.writeText(formattedText).then(() => {
+        showSnackbar('文本已复制到剪贴板', 'success');
+      }).catch((error) => {
+        console.error('复制失败:', error);
+        showSnackbar('复制失败', 'error');
+      });
+    } catch (error) {
+      console.error('处理文本时出错:', error);
+      showSnackbar('处理文本时出错', 'error');
+    }
   };
 
   if (!selectedFile) {
@@ -152,6 +266,18 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
           >
             {showPreview ? <ChevronRightIcon /> : <ChevronLeftIcon />}
           </IconButton>
+
+          {showPreview && (
+            <Tooltip title="复制渲染后的文本">
+              <IconButton
+                size="small"
+                onClick={copyRenderedText}
+                sx={{ ml: 1 }}
+              >
+                <ContentCopyIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
         </Box>
         
         <Button
@@ -225,15 +351,18 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
               display: 'flex',
               flexDirection: 'column'
             }}>
-              <Box sx={{ 
-                flex: '1 1 auto', 
-                overflow: 'auto',
-                '& .wmde-markdown': {
-                  fontSize: '14px',
-                  lineHeight: 1.6,
-                  padding: '0 16px'
-                }
-              }}>
+              <Box 
+                ref={previewRef}
+                sx={{ 
+                  flex: '1 1 auto', 
+                  overflow: 'auto',
+                  '& .wmde-markdown': {
+                    fontSize: '14px',
+                    lineHeight: 1.6,
+                    padding: '0 16px'
+                  }
+                }}
+              >
                 <MDEditor.Markdown source={content} />
               </Box>
             </Box>

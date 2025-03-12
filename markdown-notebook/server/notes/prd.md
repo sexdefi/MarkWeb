@@ -2,6 +2,7 @@
 
 好的！以下是针对 "MarkFlow" 在线 Markdown 笔记工具的完整产品需求说明书（PRD），内容全面但不过于冗余，适合直接提供给 Cursor 作为开发依据。文档涵盖产品概述、功能需求、非功能需求、验收标准等，确保 Cursor 能根据此生成符合预期的代码。
 
+![image](http://gips3.baidu.com/it/u=1821127123,1149655687&fm=3028&app=3028&f=JPEG&fmt=auto?w=720&h=1280)
 ---
 
 # 产品需求说明书 - MarkFlow 在线 Markdown 笔记工具
