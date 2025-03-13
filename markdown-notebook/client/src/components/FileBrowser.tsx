@@ -1,70 +1,38 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  List, 
-  ListItem, 
-  ListItemIcon, 
-  ListItemText, 
+import {
+  List,
+  ListItem,
+  ListItemText,
+  ListItemIcon,
   ListItemButton,
-  Paper, 
-  Divider, 
-  Typography, 
-  IconButton, 
-  Toolbar, 
-  InputBase,
+  IconButton,
+  TextField,
+  Box,
+  Typography,
+  Button,
+  Divider,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
-  TextField,
-  Button,
   Menu,
   MenuItem,
-  Box
+  Tooltip,
+  Fade,
+  CircularProgress,
+  Collapse,
 } from '@mui/material';
 import {
   Folder as FolderIcon,
   Description as FileIcon,
-  CreateNewFolder as CreateNewFolderIcon,
-  UploadFile as UploadFileIcon,
-  ArrowBack as ArrowBackIcon,
-  Search as SearchIcon,
   Add as AddIcon,
+  MoreVert as MoreVertIcon,
+  Refresh as RefreshIcon,
+  ChevronRight as ChevronRightIcon,
+  ExpandMore as ExpandMoreIcon,
 } from '@mui/icons-material';
-import { styled } from '@mui/material/styles';
 import { FileItem } from '../types';
-import { getFiles, createDirectory, uploadFile, deleteFile, renameFile, saveFile } from '../services/api';
-
-const SearchWrapper = styled('div')(({ theme }) => ({
-  position: 'relative',
-  borderRadius: theme.shape.borderRadius,
-  backgroundColor: theme.palette.common.white,
-  '&:hover': {
-    backgroundColor: theme.palette.action.hover,
-  },
-  marginRight: theme.spacing(2),
-  marginLeft: 0,
-  width: '100%',
-}));
-
-const SearchIconWrapper = styled('div')(({ theme }) => ({
-  padding: theme.spacing(0, 2),
-  height: '100%',
-  position: 'absolute',
-  pointerEvents: 'none',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-}));
-
-const StyledInputBase = styled(InputBase)(({ theme }) => ({
-  color: 'inherit',
-  '& .MuiInputBase-input': {
-    padding: theme.spacing(1, 1, 1, 0),
-    paddingLeft: `calc(1em + ${theme.spacing(4)})`,
-    transition: theme.transitions.create('width'),
-    width: '100%',
-  },
-}));
+import { getFiles, createDirectory, deleteFile, renameFile, saveFile } from '../services/api';
 
 interface FileBrowserProps {
   onFileSelect: (file: FileItem) => void;
@@ -74,8 +42,7 @@ const FileBrowser: React.FC<FileBrowserProps> = ({ onFileSelect }) => {
   const [files, setFiles] = useState<FileItem[]>([]);
   const [currentDirectory, setCurrentDirectory] = useState<string>('');
   const [directoryStack, setDirectoryStack] = useState<string[]>([]);
-  const [searchTerm, setSearchTerm] = useState<string>('');
-  const [filteredFiles, setFilteredFiles] = useState<FileItem[]>([]);
+  const [selectedFile, setSelectedFile] = useState<FileItem | null>(null);
   
   // Dialog states
   const [newFolderDialog, setNewFolderDialog] = useState<boolean>(false);
@@ -94,29 +61,24 @@ const FileBrowser: React.FC<FileBrowserProps> = ({ onFileSelect }) => {
   const [renameDialog, setRenameDialog] = useState<boolean>(false);
   const [newName, setNewName] = useState<string>('');
 
-  // Load files on mount and when directory changes
+  // 为每个文件夹添加展开/折叠状态
+  const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
+  // 添加加载动画状态
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  
   useEffect(() => {
     loadFiles();
   }, [currentDirectory]);
-  
-  // Filter files when search term changes
-  useEffect(() => {
-    if (searchTerm) {
-      const filtered = files.filter(file => 
-        file.name.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-      setFilteredFiles(filtered);
-    } else {
-      setFilteredFiles(files);
-    }
-  }, [searchTerm, files]);
 
   const loadFiles = async () => {
+    setIsLoading(true);
     try {
       const fileList = await getFiles(currentDirectory);
       setFiles(fileList);
     } catch (error) {
       console.error('Error loading files:', error);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -126,19 +88,8 @@ const FileBrowser: React.FC<FileBrowserProps> = ({ onFileSelect }) => {
       setCurrentDirectory(file.path);
     } else {
       onFileSelect(file);
+      setSelectedFile(file);
     }
-  };
-
-  const handleBackClick = () => {
-    if (directoryStack.length > 0) {
-      const previousDirectory = directoryStack.pop() || '';
-      setDirectoryStack([...directoryStack]);
-      setCurrentDirectory(previousDirectory);
-    }
-  };
-
-  const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchTerm(event.target.value);
   };
 
   const handleCreateFolder = async () => {
@@ -152,20 +103,6 @@ const FileBrowser: React.FC<FileBrowserProps> = ({ onFileSelect }) => {
       } catch (error) {
         console.error('Error creating folder:', error);
       }
-    }
-  };
-
-  const handleUploadFile = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files;
-    if (files && files.length > 0) {
-      Array.from(files).forEach(async (file) => {
-        try {
-          await uploadFile(file, currentDirectory);
-          loadFiles();
-        } catch (error) {
-          console.error('Error uploading file:', error);
-        }
-      });
     }
   };
 
@@ -205,7 +142,6 @@ const FileBrowser: React.FC<FileBrowserProps> = ({ onFileSelect }) => {
   const handleRename = async () => {
     if (contextMenu?.file && newName.trim()) {
       try {
-        // Get directory path
         const dirPath = contextMenu.file.path.split('/').slice(0, -1).join('/');
         const newPath = dirPath ? `${dirPath}/${newName}` : newName;
         
@@ -221,110 +157,226 @@ const FileBrowser: React.FC<FileBrowserProps> = ({ onFileSelect }) => {
   const handleCreateFile = async () => {
     if (newFileName.trim()) {
       try {
-        // 确保文件有.md扩展名
         let filename = newFileName;
         if (!filename.toLowerCase().endsWith('.md')) {
           filename += '.md';
         }
         
         const path = currentDirectory ? `${currentDirectory}/${filename}` : filename;
-        // 创建空文件
         await saveFile(path, '# ' + filename.replace(/\.md$/, ''));
         setNewFileDialog(false);
         setNewFileName('');
         loadFiles();
         
-        // 找到新创建的文件
-        const newFiles = await getFiles(currentDirectory);
-        const newFile = newFiles.find((f: FileItem) => f.name === filename);
-        if (newFile) {
-          onFileSelect(newFile);
-        }
+        const newFile: FileItem = {
+          name: filename,
+          path,
+          isDirectory: false,
+          size: 0,
+          modifiedAt: new Date().toISOString()
+        };
+        onFileSelect(newFile);
+        setSelectedFile(newFile);
       } catch (error) {
         console.error('Error creating file:', error);
       }
     }
   };
 
-  return (
-    <Paper elevation={3} sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <Toolbar variant="dense">
-        <IconButton
-          edge="start"
-          color="inherit"
-          aria-label="back"
-          sx={{ mr: 1 }}
-          onClick={handleBackClick}
-          disabled={directoryStack.length === 0}
-        >
-          <ArrowBackIcon />
-        </IconButton>
+  // 处理文件夹展开/折叠
+  const toggleFolder = (path: string) => {
+    setExpandedFolders(prev => ({
+      ...prev,
+      [path]: !prev[path]
+    }));
+  };
 
-        <SearchWrapper>
-          <SearchIconWrapper>
-            <SearchIcon />
-          </SearchIconWrapper>
-          <StyledInputBase
-            placeholder="搜索文件..."
-            inputProps={{ 'aria-label': 'search' }}
-            value={searchTerm}
-            onChange={handleSearchChange}
-          />
-        </SearchWrapper>
-
-        <IconButton color="primary" onClick={() => setNewFileDialog(true)}>
-          <AddIcon />
-        </IconButton>
-
-        <IconButton color="primary" onClick={() => setNewFolderDialog(true)}>
-          <CreateNewFolderIcon />
-        </IconButton>
-
-        <IconButton color="primary" component="label">
-          <input
-            type="file"
-            hidden
-            onChange={handleUploadFile}
-            multiple
-          />
-          <UploadFileIcon />
-        </IconButton>
-      </Toolbar>
-
-      <Divider />
-
-      <Typography variant="subtitle1" sx={{ p: 2, backgroundColor: '#f5f5f5' }}>
-        {currentDirectory || '根目录'}
-      </Typography>
-
-      <List sx={{ flexGrow: 1, overflow: 'auto' }}>
-        {filteredFiles.length > 0 ? (
-          filteredFiles.map((file) => (
-            <ListItem 
-              key={file.path} 
-              disablePadding
-              onContextMenu={(e) => handleContextMenu(e, file)}
-            >
-              <ListItemButton onClick={() => handleFileClick(file)}>
-                <ListItemIcon>
-                  {file.isDirectory ? <FolderIcon color="primary" /> : <FileIcon color="secondary" />}
-                </ListItemIcon>
-                <ListItemText 
-                  primary={file.name} 
-                  secondary={new Date(file.modifiedAt).toLocaleString()}
-                />
-              </ListItemButton>
-            </ListItem>
-          ))
-        ) : (
-          <Box sx={{ p: 3, textAlign: 'center' }}>
-            <Typography color="text.secondary">
-              {searchTerm ? '没有找到匹配的文件' : '此文件夹为空'}
-            </Typography>
-          </Box>
+  // 渲染文件列表项时添加动画效果
+  const renderFileItem = (file: FileItem, index: number) => (
+    <Fade in={true} style={{ transitionDelay: `${index * 30}ms` }} key={file.path}>
+      <ListItem
+        disablePadding
+        sx={{
+          borderRadius: '4px',
+          my: 0.5,
+          transition: 'all 0.2s',
+          ...(file.isDirectory && expandedFolders[file.path]
+            ? {
+                backgroundColor: 'rgba(0, 0, 0, 0.04)',
+              }
+            : {})
+        }}
+      >
+        {file.isDirectory && (
+          <IconButton 
+            size="small" 
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleFolder(file.path);
+            }}
+            sx={{ ml: 1, mr: 1 }}
+          >
+            {expandedFolders[file.path] ? <ExpandMoreIcon /> : <ChevronRightIcon />}
+          </IconButton>
         )}
-      </List>
+        <ListItemButton
+          onClick={() => handleFileClick(file)}
+          sx={{
+            pl: file.isDirectory ? 1 : 2,
+            '&:hover': {
+              backgroundColor: 'rgba(0, 0, 0, 0.04)',
+              transform: 'translateX(4px)',
+            },
+          }}
+        >
+          <ListItemIcon>
+            {file.isDirectory ? (
+              <FolderIcon color="primary" />
+            ) : (
+              <FileIcon color="info" />
+            )}
+          </ListItemIcon>
+          <ListItemText 
+            primary={file.name} 
+            primaryTypographyProps={{
+              sx: { 
+                fontWeight: file.isDirectory && expandedFolders[file.path] ? 'bold' : 'regular',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }
+            }}
+          />
+        </ListItemButton>
+        <IconButton
+          size="small"
+          onClick={(e) => handleContextMenu(e, file)}
+          sx={{ mr: 1 }}
+        >
+          <MoreVertIcon fontSize="small" />
+        </IconButton>
+      </ListItem>
+    </Fade>
+  );
+  
+  // 渲染目录子项
+  const renderChildren = (parentPath: string, items: FileItem[]) => {
+    const children = items.filter(file => 
+      file.path.startsWith(parentPath) && 
+      file.path !== parentPath &&
+      file.path.split('/').length === parentPath.split('/').length + 1
+    );
+    
+    if (children.length === 0) return null;
+    
+    return (
+      <Collapse in={expandedFolders[parentPath]} timeout="auto" unmountOnExit>
+        <List component="div" disablePadding sx={{ pl: 2 }}>
+          {children.map((child, index) => (
+            <React.Fragment key={child.path}>
+              {renderFileItem(child, index)}
+              {child.isDirectory && expandedFolders[child.path] && renderChildren(child.path, items)}
+            </React.Fragment>
+          ))}
+        </List>
+      </Collapse>
+    );
+  };
 
+  // 渲染顶级目录
+  const renderRootItems = () => {
+    const rootItems = files.filter(file => 
+      file.path.split('/').length <= 2 && file.path !== '/'
+    );
+    
+    return rootItems.map((item, index) => (
+      <React.Fragment key={item.path}>
+        {renderFileItem(item, index)}
+        {item.isDirectory && renderChildren(item.path, files)}
+      </React.Fragment>
+    ));
+  };
+
+  return (
+    <Box sx={{ 
+      display: 'flex', 
+      flexDirection: 'column', 
+      height: '100%',
+      borderRight: '1px solid rgba(0, 0, 0, 0.12)',
+      position: 'relative'
+    }}>
+      <Box sx={{ 
+        p: 2, 
+        display: 'flex', 
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+        background: 'linear-gradient(to right, #f5f7fa, #f7f9fc)',
+        borderRadius: '4px',
+        m: 1
+      }}>
+        <Typography variant="h6" sx={{ fontWeight: 'bold' }}>文件浏览器</Typography>
+        <Box>
+          <Tooltip title="刷新">
+            <IconButton 
+              size="small" 
+              onClick={() => loadFiles()} 
+              disabled={isLoading}
+              sx={{
+                transition: 'all 0.2s',
+                '&:hover': { transform: 'rotate(180deg)' }
+              }}
+            >
+              {isLoading ? <CircularProgress size={20} /> : <RefreshIcon />}
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="添加新项">
+            <IconButton 
+              size="small" 
+              onClick={() => setNewFileDialog(true)}
+              sx={{ ml: 1 }}
+            >
+              <AddIcon />
+            </IconButton>
+          </Tooltip>
+        </Box>
+      </Box>
+      
+      <Divider />
+      
+      <Box sx={{ 
+        flex: 1, 
+        overflow: 'auto',
+        px: 1
+      }}>
+        {isLoading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+            <CircularProgress size={40} />
+          </Box>
+        ) : (
+          files.length > 0 ? (
+            <List dense component="nav">
+              {renderRootItems()}
+            </List>
+          ) : (
+            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', p: 2 }}>
+              <Typography variant="body2" color="text.secondary" align="center">
+                暂无文件
+                <Button 
+                  variant="text" 
+                  color="primary" 
+                  size="small" 
+                  onClick={() => setNewFileDialog(true)}
+                  sx={{ ml: 1 }}
+                >
+                  创建新文件
+                </Button>
+              </Typography>
+            </Box>
+          )
+        )}
+      </Box>
+      
       {/* 新建文件夹对话框 */}
       <Dialog open={newFolderDialog} onClose={() => setNewFolderDialog(false)}>
         <DialogTitle>新建文件夹</DialogTitle>
@@ -400,7 +452,7 @@ const FileBrowser: React.FC<FileBrowserProps> = ({ onFileSelect }) => {
           <Button onClick={handleRename} variant="contained" color="primary">确定</Button>
         </DialogActions>
       </Dialog>
-    </Paper>
+    </Box>
   );
 };
 

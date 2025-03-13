@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Paper, Box, Typography, Button, Toolbar, Snackbar, Alert, IconButton, Divider, Tooltip } from '@mui/material';
+import { Paper, Box, Typography, Button, Toolbar, Snackbar, Alert, IconButton, Divider, Tooltip, Menu, MenuItem, Slider, Fade } from '@mui/material';
 import MDEditor, { commands } from '@uiw/react-md-editor';
 import { FileItem } from '../types';
 import { getFileContent, saveFile } from '../services/api';
@@ -7,6 +7,11 @@ import SaveIcon from '@mui/icons-material/Save';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
+import FormatSizeIcon from '@mui/icons-material/FormatSize';
+import SelectAllIcon from '@mui/icons-material/SelectAll';
+// @ts-ignore
+import html2pdf from 'html2pdf.js';
 
 interface MarkdownEditorProps {
   selectedFile: FileItem | null;
@@ -21,6 +26,12 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
   const [snackbarSeverity, setSnackbarSeverity] = useState<'success' | 'error'>('success');
   const [showPreview, setShowPreview] = useState<boolean>(true);
   const previewRef = useRef<HTMLDivElement>(null);
+  const editorRef = useRef<HTMLDivElement>(null);
+  
+  // 新增状态
+  const [fontSize, setFontSize] = useState<number>(14);
+  const [fontSizeMenuAnchor, setFontSizeMenuAnchor] = useState<null | HTMLElement>(null);
+  const [isExporting, setIsExporting] = useState<boolean>(false);
 
   useEffect(() => {
     if (selectedFile && !selectedFile.isDirectory) {
@@ -248,6 +259,69 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
     }
   };
 
+  // 添加PDF导出功能
+  const exportToPdf = async () => {
+    if (!previewRef.current || !selectedFile) return;
+    
+    try {
+      setIsExporting(true);
+      showSnackbar('正在准备PDF导出...', 'success');
+      
+      const element = previewRef.current;
+      const fileName = selectedFile.name.replace(/\.[^/.]+$/, "") || 'document';
+      
+      const opt = {
+        margin: 10,
+        filename: `${fileName}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      };
+      
+      await html2pdf().set(opt).from(element).save();
+      
+      showSnackbar('PDF导出成功!', 'success');
+    } catch (error) {
+      console.error('PDF导出失败:', error);
+      showSnackbar('PDF导出失败', 'error');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  // 添加字体大小菜单打开与关闭功能
+  const handleFontSizeMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
+    setFontSizeMenuAnchor(event.currentTarget);
+  };
+
+  const handleFontSizeMenuClose = () => {
+    setFontSizeMenuAnchor(null);
+  };
+
+  // 处理字体大小更改
+  const handleFontSizeChange = (_event: Event, newValue: number | number[]) => {
+    setFontSize(newValue as number);
+  };
+
+  // 一键全选文本功能
+  const selectAllText = () => {
+    if (!editorRef.current) return;
+    
+    try {
+      // 查找编辑器内的textarea元素
+      const textarea = editorRef.current.querySelector('textarea');
+      if (textarea) {
+        textarea.select();
+        showSnackbar('已全选编辑器中的文本', 'success');
+      } else {
+        showSnackbar('无法找到编辑区域', 'error');
+      }
+    } catch (error) {
+      console.error('全选文本失败:', error);
+      showSnackbar('全选文本失败', 'error');
+    }
+  };
+
   if (!selectedFile) {
     return (
       <Paper 
@@ -296,7 +370,8 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
         display: 'flex', 
         flexDirection: 'column',
         position: 'relative',
-        overflow: 'hidden'
+        overflow: 'hidden',
+        transition: 'all 0.3s ease' // 添加过渡效果
       }}
     >
       <Toolbar 
@@ -305,26 +380,76 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
           justifyContent: 'space-between', 
           bgcolor: '#f5f5f5',
           minHeight: '48px',
-          flex: '0 0 auto'
+          flex: '0 0 auto',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.1)' // 增加阴影，提升层次感
         }}
       >
-        <Box sx={{ display: 'flex', alignItems: 'center',minWidth: '400px',width: '100%' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', minWidth: '400px', width: '100%' }}>
           <Typography variant="subtitle1" sx={{ fontWeight: 'medium', mr: 2 }}>
             {selectedFile.name} {isModified ? '(已修改)' : ''}
           </Typography>
           
-          {(
-            <Tooltip title="复制纯文本">
-              <IconButton
+          <Tooltip title="一键全选文本">
+            <IconButton
+              size="small"
+              onClick={selectAllText}
+              sx={{ ml: 1 }}
+            >
+              <SelectAllIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          
+          <Tooltip title="复制纯文本">
+            <IconButton
+              size="small"
+              onClick={copyRenderedText}
+              sx={{ ml: 1 }}
+            >
+              <ContentCopyIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+
+          <Tooltip title="导出PDF">
+            <IconButton
+              size="small"
+              onClick={exportToPdf}
+              disabled={isExporting}
+              sx={{ ml: 1 }}
+            >
+              <PictureAsPdfIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+
+          <Tooltip title="调整字体大小">
+            <IconButton
+              size="small"
+              onClick={handleFontSizeMenuOpen}
+              sx={{ ml: 1 }}
+            >
+              <FormatSizeIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Menu
+            anchorEl={fontSizeMenuAnchor}
+            open={Boolean(fontSizeMenuAnchor)}
+            onClose={handleFontSizeMenuClose}
+            TransitionComponent={Fade}
+          >
+            <MenuItem sx={{ width: 200, padding: '10px 16px' }}>
+              <Typography variant="body2" sx={{ mb: 1 }}>
+                字体大小: {fontSize}px
+              </Typography>
+              <Slider
+                value={fontSize}
+                onChange={handleFontSizeChange}
+                min={10}
+                max={24}
+                step={1}
+                valueLabelDisplay="auto"
                 size="small"
-                onClick={copyRenderedText}
-                sx={{ ml: 1 }}
-              >
-              <text style={{fontSize: '12px',color: 'black'}}>复制</text>
-                <ContentCopyIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
-          )}
+              />
+            </MenuItem>
+          </Menu>
 
           <IconButton 
             size="small" 
@@ -332,11 +457,8 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
             sx={{ ml: 1 }}
             title={showPreview ? "收起预览" : "显示预览"}
           >
-            {showPreview ? <text style={{fontSize: '12px',color: 'black'}}>收起预览</text> : <text style={{fontSize: '12px',color: 'black'}}>预览</text>}
-            {showPreview ? < ChevronLeftIcon/> : < ChevronRightIcon/>}
+            {showPreview ? <ChevronLeftIcon/> : <ChevronRightIcon/>}
           </IconButton>
-
-          
         </Box>
         
         <Button
@@ -346,6 +468,14 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
           startIcon={<SaveIcon />}
           onClick={handleSave}
           disabled={!isModified || loading}
+          sx={{
+            boxShadow: '0 2px 5px rgba(0,0,0,0.2)',
+            transition: 'all 0.2s',
+            '&:hover': {
+              transform: 'translateY(-2px)',
+              boxShadow: '0 4px 8px rgba(0,0,0,0.2)'
+            }
+          }}
         >
           保存
         </Button>
@@ -359,13 +489,16 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
         position: 'relative'
       }}>
         {/* 编辑区 */}
-        <Box sx={{ 
-          flex: showPreview ? '1 1 50%' : '1 1 100%',
-          display: 'flex',
-          flexDirection: 'column',
-          overflow: 'hidden',
-          transition: 'flex 0.3s ease'
-        }}>
+        <Box 
+          ref={editorRef}
+          sx={{ 
+            flex: showPreview ? '1 1 50%' : '1 1 100%',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+            transition: 'all 0.3s ease'
+          }}
+        >
           <MDEditor
             value={content}
             onChange={handleContentChange}
@@ -375,6 +508,12 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
             enableScroll={true}
             toolbarHeight={50}
             height="100%"
+            textareaProps={{
+              style: {
+                fontSize: `${fontSize}px`,
+                lineHeight: '1.6',
+              }
+            }}
             commands={[
               commands.bold,
               commands.italic,
@@ -403,7 +542,7 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
               overflow: 'auto',
               p: 2,
               bgcolor: '#ffffff',
-              transition: 'flex 0.3s ease',
+              transition: 'all 0.3s ease',
               display: 'flex',
               flexDirection: 'column'
             }}>
@@ -413,7 +552,7 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
                   flex: '1 1 auto', 
                   overflow: 'auto',
                   '& .wmde-markdown': {
-                    fontSize: '14px',
+                    fontSize: `${fontSize}px`,
                     lineHeight: 1.6,
                     padding: '0 16px'
                   }
@@ -431,8 +570,21 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
         autoHideDuration={3000} 
         onClose={handleSnackbarClose}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        sx={{
+          '& .MuiAlert-filledSuccess': {
+            background: 'linear-gradient(45deg, #4caf50 30%, #81c784 90%)'
+          },
+          '& .MuiAlert-filledError': {
+            background: 'linear-gradient(45deg, #f44336 30%, #e57373 90%)'
+          }
+        }}
       >
-        <Alert onClose={handleSnackbarClose} severity={snackbarSeverity}>
+        <Alert 
+          onClose={handleSnackbarClose} 
+          severity={snackbarSeverity}
+          variant="filled"
+          sx={{ width: '100%' }}
+        >
           {snackbarMessage}
         </Alert>
       </Snackbar>
