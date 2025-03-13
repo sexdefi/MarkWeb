@@ -204,6 +204,12 @@ const FileBrowser: React.FC<FileBrowserProps> = ({ onFileSelect }) => {
             ? {
                 backgroundColor: 'rgba(0, 0, 0, 0.04)',
               }
+            : {}),
+          ...(selectedFile && selectedFile.path === file.path
+            ? {
+                backgroundColor: 'rgba(25, 118, 210, 0.08)',
+                borderLeft: '3px solid #1976d2',
+              }
             : {})
         }}
       >
@@ -233,14 +239,14 @@ const FileBrowser: React.FC<FileBrowserProps> = ({ onFileSelect }) => {
             {file.isDirectory ? (
               <FolderIcon color="primary" />
             ) : (
-              <FileIcon color="info" />
+              <FileIcon color={selectedFile?.path === file.path ? "primary" : "info"} />
             )}
           </ListItemIcon>
           <ListItemText 
             primary={file.name} 
             primaryTypographyProps={{
               sx: { 
-                fontWeight: file.isDirectory && expandedFolders[file.path] ? 'bold' : 'regular',
+                fontWeight: selectedFile?.path === file.path ? 'bold' : 'regular',
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
                 whiteSpace: 'nowrap',
