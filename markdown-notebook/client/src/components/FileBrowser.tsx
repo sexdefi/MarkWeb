@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, KeyboardEvent } from 'react';
 import {
   List,
   ListItem,
@@ -303,14 +303,54 @@ const FileBrowser: React.FC<FileBrowserProps> = ({ onFileSelect }) => {
     ));
   };
 
+  // 添加快捷键处理函数
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    // Ctrl/Cmd + N: 新建文件
+    if ((event.ctrlKey || event.metaKey) && event.key === 'n') {
+      event.preventDefault();
+      setNewFileDialog(true);
+    }
+    // Delete: 删除选中的文件
+    if (event.key === 'Delete' && selectedFile) {
+      event.preventDefault();
+      handleDelete();
+    }
+    // F2: 重命名选中的文件
+    if (event.key === 'F2' && selectedFile) {
+      event.preventDefault();
+      setNewName(selectedFile.name);
+      setRenameDialog(true);
+    }
+  };
+
+  // 处理新建文件对话框的回车确认
+  const handleNewFileKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      handleCreateFile();
+    }
+  };
+
+  // 处理重命名对话框的回车确认
+  const handleRenameKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      handleRename();
+    }
+  };
+
   return (
-    <Box sx={{ 
-      display: 'flex', 
-      flexDirection: 'column', 
-      height: '100%',
-      borderRight: '1px solid rgba(0, 0, 0, 0.12)',
-      position: 'relative'
-    }}>
+    <Box 
+      sx={{ 
+        display: 'flex', 
+        flexDirection: 'column', 
+        height: '100%',
+        borderRight: '1px solid rgba(0, 0, 0, 0.12)',
+        position: 'relative'
+      }}
+      onKeyDown={handleKeyDown}
+      tabIndex={0} // 使 Box 可以接收键盘事件
+    >
       <Box sx={{ 
         p: 2, 
         display: 'flex', 
@@ -404,7 +444,11 @@ const FileBrowser: React.FC<FileBrowserProps> = ({ onFileSelect }) => {
       </Dialog>
 
       {/* 新建文件对话框 */}
-      <Dialog open={newFileDialog} onClose={() => setNewFileDialog(false)}>
+      <Dialog 
+        open={newFileDialog} 
+        onClose={() => setNewFileDialog(false)}
+        onKeyDown={handleNewFileKeyDown}
+      >
         <DialogTitle>新建Markdown文件</DialogTitle>
         <DialogContent>
           <TextField
@@ -440,7 +484,11 @@ const FileBrowser: React.FC<FileBrowserProps> = ({ onFileSelect }) => {
       </Menu>
 
       {/* 重命名对话框 */}
-      <Dialog open={renameDialog} onClose={() => setRenameDialog(false)}>
+      <Dialog 
+        open={renameDialog} 
+        onClose={() => setRenameDialog(false)}
+        onKeyDown={handleRenameKeyDown}
+      >
         <DialogTitle>重命名</DialogTitle>
         <DialogContent>
           <TextField
