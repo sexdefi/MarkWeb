@@ -381,84 +381,71 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
           bgcolor: '#f5f5f5',
           minHeight: '48px',
           flex: '0 0 auto',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.1)' // 增加阴影，提升层次感
+          boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+          p: { xs: 0.5, sm: 1 }, // 响应式内边距
+          overflow: 'hidden'
         }}
       >
-        <Box sx={{ display: 'flex', alignItems: 'center', minWidth: '400px', width: '100%' }}>
-          <Typography variant="subtitle1" sx={{ fontWeight: 'medium', mr: 2 }}>
+        <Box sx={{ 
+          display: 'flex', 
+          alignItems: 'center',
+          flexGrow: 1,
+          minWidth: 0, // 允许容器缩小
+          gap: { xs: 0.5, sm: 1 } // 响应式间距
+        }}>
+          <Typography 
+            variant="subtitle1" 
+            sx={{ 
+              fontWeight: 'medium',
+              flexShrink: 1, // 允许文字缩小
+              minWidth: 0,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap'
+            }}
+          >
             {selectedFile.name} {isModified ? '(已修改)' : ''}
           </Typography>
           
-          <Tooltip title="一键全选文本">
-            <IconButton
-              size="small"
-              onClick={selectAllText}
-              sx={{ ml: 1 }}
-            >
-              <SelectAllIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          
-          <Tooltip title="复制纯文本">
-            <IconButton
-              size="small"
-              onClick={copyRenderedText}
-              sx={{ ml: 1 }}
-            >
-              <ContentCopyIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
+          <Box sx={{ 
+            display: 'flex', 
+            gap: { xs: 0.5, sm: 1 },
+            flexShrink: 0 // 防止图标缩小
+          }}>
+            <Tooltip title="一键全选文本">
+              <IconButton size="small" onClick={selectAllText}>
+                <SelectAllIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            
+            <Tooltip title="复制纯文本">
+              <IconButton size="small" onClick={copyRenderedText}>
+                <ContentCopyIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
 
-          <Tooltip title="导出PDF">
-            <IconButton
-              size="small"
-              onClick={exportToPdf}
-              disabled={isExporting}
-              sx={{ ml: 1 }}
-            >
-              <PictureAsPdfIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-
-          <Tooltip title="调整字体大小">
-            <IconButton
-              size="small"
-              onClick={handleFontSizeMenuOpen}
-              sx={{ ml: 1 }}
-            >
-              <FormatSizeIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          <Menu
-            anchorEl={fontSizeMenuAnchor}
-            open={Boolean(fontSizeMenuAnchor)}
-            onClose={handleFontSizeMenuClose}
-            TransitionComponent={Fade}
-          >
-            <MenuItem sx={{ width: 200, padding: '10px 16px' }}>
-              <Typography variant="body2" sx={{ mb: 1 }}>
-                字体大小: {fontSize}px
-              </Typography>
-              <Slider
-                value={fontSize}
-                onChange={handleFontSizeChange}
-                min={10}
-                max={24}
-                step={1}
-                valueLabelDisplay="auto"
+            <Tooltip title="导出PDF">
+              <IconButton
                 size="small"
-              />
-            </MenuItem>
-          </Menu>
+                onClick={exportToPdf}
+                disabled={isExporting}
+              >
+                <PictureAsPdfIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
 
-          <IconButton 
-            size="small" 
-            onClick={togglePreview}
-            sx={{ ml: 1 }}
-            title={showPreview ? "收起预览" : "显示预览"}
-          >
-            {showPreview ? <ChevronLeftIcon/> : <ChevronRightIcon/>}
-          </IconButton>
+            <Tooltip title="调整字体大小">
+              <IconButton size="small" onClick={handleFontSizeMenuOpen}>
+                <FormatSizeIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+
+            <Tooltip title={showPreview ? "收起预览" : "显示预览"}>
+              <IconButton size="small" onClick={togglePreview}>
+                {showPreview ? <ChevronLeftIcon/> : <ChevronRightIcon/>}
+              </IconButton>
+            </Tooltip>
+          </Box>
         </Box>
         
         <Button
@@ -469,6 +456,8 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
           onClick={handleSave}
           disabled={!isModified || loading}
           sx={{
+            ml: { xs: 1, sm: 2 },
+            minWidth: { xs: 'auto', sm: '80px' },
             boxShadow: '0 2px 5px rgba(0,0,0,0.2)',
             transition: 'all 0.2s',
             '&:hover': {
@@ -477,7 +466,8 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
             }
           }}
         >
-          保存
+          {/* 在小屏幕上只显示图标 */}
+          <Box sx={{ display: { xs: 'none', sm: 'block' } }}>保存</Box>
         </Button>
       </Toolbar>
       
