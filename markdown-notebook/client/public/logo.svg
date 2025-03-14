@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <!-- 背景圆形 -->
+    <circle cx="256" cy="256" r="240" fill="#4A90E2" opacity="0.1"/>
+    
+    <!-- 笔记本主体 -->
+    <path d="M160 120C160 106.745 170.745 96 184 96H328C341.255 96 352 106.745 352 120V392C352 405.255 341.255 416 328 416H184C170.745 416 160 405.255 160 392V120Z" 
+          fill="#4A90E2" stroke="#2C3E50" stroke-width="8"/>
+    
+    <!-- 笔记本内页 -->
+    <path d="M180 140H332M180 180H332M180 220H332M180 260H332M180 300H332M180 340H332M180 380H332" 
+          stroke="#2C3E50" stroke-width="4" stroke-linecap="round"/>
+    
+    <!-- 装饰性圆点 -->
+    <circle cx="256" cy="256" r="8" fill="#2C3E50"/>
+    <circle cx="256" cy="256" r="24" stroke="#2C3E50" stroke-width="4" fill="none"/>
+    
+    <!-- 笔记本装订线 -->
+    <path d="M184 120V392" stroke="#2C3E50" stroke-width="8"/>
+</svg> 

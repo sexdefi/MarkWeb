@@ -1,6 +1,6 @@
-# Markdown笔记本
+# Notebook Pro
 
-一个简单而强大的本地Markdown笔记管理工具，支持浏览、创建、编辑和管理Markdown文件。
+一个专业而强大的本地Markdown笔记管理工具，支持浏览、创建、编辑和管理Markdown文件。
 
 ## 功能特点
 
