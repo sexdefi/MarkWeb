@@ -38,6 +38,8 @@ import SecurityIcon from '@mui/icons-material/Security';
 import SpeedIcon from '@mui/icons-material/Speed';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import CodeIcon from '@mui/icons-material/Code';
+import KeyboardIcon from '@mui/icons-material/Keyboard';
+import MenuIcon from '@mui/icons-material/Menu';
 import { AIAssistantProps } from '../types';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -179,6 +181,43 @@ const MarkdownCodeComponent = ({ inline, className, children }: CodeComponentPro
   );
 };
 
+// 添加专家模式配置
+const AI_EXPERTS = {
+  code: {
+    name: '代码分析专家',
+    icon: <CodeIcon />,
+    prompt: `你是一个专业的代码分析专家，专注于代码质量、性能和安全性分析。
+请从以下方面提供专业的分析和建议：
+1. 代码架构和设计模式
+2. 性能优化和算法改进
+3. 安全漏洞和最佳实践
+4. 测试策略和覆盖率
+请使用 Markdown 格式输出，并提供具体的代码示例。`
+  },
+  doc: {
+    name: '文档分析专家',
+    icon: <ArticleIcon />,
+    prompt: `你是一个专业的文档分析专家，擅长文档结构分析和内容优化。
+请从以下方面提供专业的分析和建议：
+1. 文档结构和组织
+2. 内容完整性和准确性
+3. 语言表达和可读性
+4. 格式规范和排版
+请使用 Markdown 格式输出，并提供具体的改进建议。`
+  },
+  topic: {
+    name: '主题提炼专家',
+    icon: <AutoFixHighIcon />,
+    prompt: `你是一个专业的主题提炼专家，擅长内容总结和关键点提取。
+请从以下方面提供专业的分析和建议：
+1. 核心主题和关键概念
+2. 逻辑关系和层次结构
+3. 重点内容突出
+4. 总结和归纳
+请使用 Markdown 格式输出，并提供清晰的结构化内容。`
+  }
+};
+
 const AIAssistant: React.FC<AIAssistantProps> = ({ 
   onClose, 
   id = 'ai-assistant',
@@ -195,6 +234,10 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   const [isFullScreen, setIsFullScreen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [rangeDialogOpen, setRangeDialogOpen] = useState(false);
+  const [selectedExpert, setSelectedExpert] = useState('code');
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const [showExpertMenu, setShowExpertMenu] = useState(false);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // 从localStorage加载配置
   useEffect(() => {
@@ -564,11 +607,32 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     }
   };
 
-  // 添加快捷键监听
+  // 添加快捷键处理
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Alt/Option + Enter 插入换行
+      // 全选
+      if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
+        e.preventDefault();
+        inputRef.current?.select();
+      }
+      // 撤销
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+        e.preventDefault();
+        // TODO: 实现撤销功能
+      }
+      // 重做
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'z') {
+        e.preventDefault();
+        // TODO: 实现重做功能
+      }
+      // 清空输入
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setInput('');
+      }
+      // 插入换行
       if (e.key === 'Enter' && (e.altKey || e.metaKey)) {
+        e.preventDefault();
         setInput(prev => prev + '\n');
       }
     };
@@ -576,6 +640,41 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
+
+  // 处理 @ 命令
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const value = e.target.value;
+    const lastAtSymbol = value.lastIndexOf('@');
+    
+    if (lastAtSymbol !== -1) {
+      const afterAt = value.slice(lastAtSymbol + 1);
+      const words = afterAt.split(/\s/);
+      const command = words[0].toLowerCase();
+      
+      if (command === 'expert') {
+        // 显示专家选择菜单
+        setShowExpertMenu(true);
+      } else if (command === 'clear') {
+        // 清空对话
+        setMessages([]);
+      } else if (command === 'help') {
+        // 显示帮助信息
+        setInput(prev => prev.replace(/@help$/, ''));
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: `可用的命令：
+@expert - 切换专家模式
+@clear - 清空对话
+@help - 显示帮助信息
+@undo - 撤销上一步
+@redo - 重做上一步`,
+          timestamp: new Date()
+        }]);
+      }
+    }
+    
+    setInput(value);
+  };
 
   return (
     <Paper 
@@ -604,6 +703,16 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
         <Typography variant="h6" sx={{ flexGrow: 1 }}>
           AI助手
         </Typography>
+        <Tooltip title="快捷键">
+          <IconButton onClick={() => setShowShortcuts(!showShortcuts)}>
+            <KeyboardIcon />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title="专家模式">
+          <IconButton onClick={() => setShowExpertMenu(true)}>
+            <MenuIcon />
+          </IconButton>
+        </Tooltip>
         <IconButton onClick={() => setIsFullScreen(!isFullScreen)}>
           {isFullScreen ? <FullscreenExitIcon /> : <FullscreenIcon />}
         </IconButton>
@@ -616,6 +725,21 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
           </IconButton>
         )}
       </Box>
+
+      {/* 快捷键提示 */}
+      {showShortcuts && (
+        <Box sx={{ p: 2, bgcolor: 'background.paper', borderBottom: 1, borderColor: 'divider' }}>
+          <Typography variant="subtitle2" gutterBottom>快捷键</Typography>
+          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 1 }}>
+            <Typography variant="body2">Ctrl/Cmd + A: 全选</Typography>
+            <Typography variant="body2">Ctrl/Cmd + Z: 撤销</Typography>
+            <Typography variant="body2">Ctrl/Cmd + Shift + Z: 重做</Typography>
+            <Typography variant="body2">Esc: 清空输入</Typography>
+            <Typography variant="body2">Alt/Option + Enter: 插入换行</Typography>
+            <Typography variant="body2">Enter: 发送消息</Typography>
+          </Box>
+        </Box>
+      )}
 
       {/* 消息列表 */}
       <Box sx={{ 
@@ -888,19 +1012,32 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
       <Box sx={{ p: 2, borderTop: 1, borderColor: 'divider' }}>
         <Box sx={{ display: 'flex', gap: 1 }}>
           <TextField
+            inputRef={inputRef}
             fullWidth
             multiline
-            maxRows={4}
+            maxRows={8}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={handleInputChange}
             onKeyPress={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 handleSend();
               }
             }}
-            placeholder="输入消息...(Alt/Option + Enter 插入换行)"
+            placeholder="输入消息... (输入 @ 查看可用命令)"
             disabled={loading}
+            sx={{
+              '& .MuiInputBase-root': {
+                borderRadius: 2,
+                bgcolor: 'background.paper',
+                '&:hover': {
+                  bgcolor: 'action.hover',
+                },
+                '&.Mui-focused': {
+                  bgcolor: 'action.selected',
+                }
+              }
+            }}
           />
           <IconButton 
             color="primary" 
@@ -987,6 +1124,46 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
         onClose={() => setRangeDialogOpen(false)}
         onConfirm={handleAddRange}
       />
+
+      {/* 专家模式选择菜单 */}
+      <Dialog
+        open={showExpertMenu}
+        onClose={() => setShowExpertMenu(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>选择专家模式</DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
+            {Object.entries(AI_EXPERTS).map(([key, expert]) => (
+              <Paper
+                key={key}
+                sx={{
+                  p: 2,
+                  cursor: 'pointer',
+                  bgcolor: selectedExpert === key ? 'primary.light' : 'background.paper',
+                  '&:hover': {
+                    bgcolor: 'action.hover',
+                  }
+                }}
+                onClick={() => {
+                  setSelectedExpert(key);
+                  setConfig(prev => ({ ...prev, systemPrompt: expert.prompt }));
+                  setShowExpertMenu(false);
+                }}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  {expert.icon}
+                  <Typography>{expert.name}</Typography>
+                </Box>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                  {expert.prompt.slice(0, 100)}...
+                </Typography>
+              </Paper>
+            ))}
+          </Box>
+        </DialogContent>
+      </Dialog>
 
       {/* 错误提示 */}
       <Snackbar 
