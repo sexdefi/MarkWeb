@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Box,
   Paper,
@@ -28,6 +28,7 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
+  isStreaming?: boolean;
 }
 
 interface AIConfig {
@@ -55,7 +56,8 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ onClose, id = 'ai-assistant' 
   const [config, setConfig] = useState<AIConfig>(DEFAULT_CONFIG);
   const [configOpen, setConfigOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // const [currentFile, setCurrentFile] = useState<string | null>(null);
+  const [currentStreamingMessage, setCurrentStreamingMessage] = useState<string>('');
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // 从localStorage加载配置
   useEffect(() => {
@@ -99,43 +101,111 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ onClose, id = 'ai-assistant' 
     }
   }, [id, loading]);
 
+  // 添加自动滚动到底部
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, currentStreamingMessage]);
+
+  // 处理SSE流式响应
+  const handleStreamResponse = async (response: Response, role: 'assistant') => {
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`AI服务请求失败: ${response.status} ${response.statusText}\n${errorText}`);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('无法读取响应流');
+
+    let accumulatedContent = '';
+    const decoder = new TextDecoder();
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+        
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6);
+            if (data === '[DONE]') continue;
+            
+            try {
+              const parsed = JSON.parse(data);
+              const content = parsed.choices[0]?.delta?.content || '';
+              accumulatedContent += content;
+              setCurrentStreamingMessage(accumulatedContent);
+            } catch (e) {
+              console.error('解析SSE数据失败:', e);
+            }
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+
+    // 完成流式输出后，添加完整消息
+    const finalMessage: Message = {
+      role,
+      content: accumulatedContent,
+      timestamp: new Date()
+    };
+    setMessages(prev => [...prev, finalMessage]);
+    setCurrentStreamingMessage('');
+  };
+
   const handleAnalyze = async (fileContent: string) => {
     if (!fileContent.trim() || loading) return;
+
+    console.log('开始分析文件内容:', {
+      serverUrl: config.serverUrl,
+      apiKey: config.apiKey ? '已设置' : '未设置',
+      model: config.model,
+      contentLength: fileContent.length
+    });
 
     setLoading(true);
     setError(null);
 
     try {
+      console.log('准备发送请求到:', `${config.serverUrl}/chat/completions`);
+      
+      const requestBody = {
+        model: config.model,
+        messages: [
+          { role: 'system', content: config.systemPrompt },
+          { role: 'user', content: `请分析以下文件内容，并给出总结和建议：\n\n${fileContent}` }
+        ],
+        temperature: config.temperature,
+        max_tokens: config.maxTokens,
+        stream: true // 启用流式输出
+      };
+      
+      console.log('请求体:', JSON.stringify(requestBody, null, 2));
+
       const response = await fetch(`${config.serverUrl}/chat/completions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${config.apiKey}`
+          'Authorization': `Bearer ${config.apiKey}`,
+          'Accept': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+          'Origin': window.location.origin
         },
-        body: JSON.stringify({
-          model: config.model,
-          messages: [
-            { role: 'system', content: config.systemPrompt },
-            { role: 'user', content: `请分析以下文件内容，并给出总结和建议：\n\n${fileContent}` }
-          ],
-          temperature: config.temperature,
-          max_tokens: config.maxTokens
-        })
+        body: JSON.stringify(requestBody)
       });
 
-      if (!response.ok) {
-        throw new Error('AI服务请求失败');
-      }
-
-      const data = await response.json();
-      const assistantMessage: Message = {
-        role: 'assistant',
-        content: data.choices[0].message.content,
-        timestamp: new Date()
-      };
-
-      setMessages(prev => [...prev, assistantMessage]);
+      await handleStreamResponse(response, 'assistant');
     } catch (err) {
+      console.error('处理请求时出错:', err);
       setError(err instanceof Error ? err.message : '发生未知错误');
     } finally {
       setLoading(false);
@@ -152,42 +222,40 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ onClose, id = 'ai-assistant' 
     };
 
     setMessages(prev => [...prev, userMessage]);
+    const currentInput = input;
     setInput('');
     setLoading(true);
     setError(null);
 
     try {
+      const requestBody = {
+        model: config.model,
+        messages: [
+          { role: 'system', content: config.systemPrompt },
+          ...messages.map(msg => ({ role: msg.role, content: msg.content })),
+          { role: 'user', content: currentInput }
+        ],
+        temperature: config.temperature,
+        max_tokens: config.maxTokens,
+        stream: true // 启用流式输出
+      };
+
       const response = await fetch(`${config.serverUrl}/chat/completions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${config.apiKey}`
+          'Authorization': `Bearer ${config.apiKey}`,
+          'Accept': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+          'Origin': window.location.origin
         },
-        body: JSON.stringify({
-          model: config.model,
-          messages: [
-            { role: 'system', content: config.systemPrompt },
-            ...messages.map(msg => ({ role: msg.role, content: msg.content })),
-            { role: 'user', content: input }
-          ],
-          temperature: config.temperature,
-          max_tokens: config.maxTokens
-        })
+        body: JSON.stringify(requestBody)
       });
 
-      if (!response.ok) {
-        throw new Error('AI服务请求失败');
-      }
-
-      const data = await response.json();
-      const assistantMessage: Message = {
-        role: 'assistant',
-        content: data.choices[0].message.content,
-        timestamp: new Date()
-      };
-
-      setMessages(prev => [...prev, assistantMessage]);
+      await handleStreamResponse(response, 'assistant');
     } catch (err) {
+      console.error('处理请求时出错:', err);
       setError(err instanceof Error ? err.message : '发生未知错误');
     } finally {
       setLoading(false);
@@ -265,7 +333,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ onClose, id = 'ai-assistant' 
                   borderRadius: 2
                 }}
               >
-                <Typography variant="body1">
+                <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>
                   {message.content}
                 </Typography>
                 <Typography variant="caption" sx={{ mt: 1, display: 'block' }}>
@@ -275,11 +343,52 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ onClose, id = 'ai-assistant' 
             </Box>
           </Box>
         ))}
-        {loading && (
+        
+        {/* 流式输出的当前消息 */}
+        {currentStreamingMessage && (
+          <Box
+            sx={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'flex-start',
+              gap: 1
+            }}
+          >
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+                maxWidth: '80%'
+              }}
+            >
+              <SmartToyIcon color="primary" />
+              <Paper
+                elevation={1}
+                sx={{
+                  p: 2,
+                  bgcolor: 'background.paper',
+                  color: 'text.primary',
+                  borderRadius: 2
+                }}
+              >
+                <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>
+                  {currentStreamingMessage}
+                  <span className="cursor">▋</span>
+                </Typography>
+              </Paper>
+            </Box>
+          </Box>
+        )}
+        
+        {loading && !currentStreamingMessage && (
           <Box sx={{ display: 'flex', justifyContent: 'center', p: 2 }}>
             <CircularProgress size={24} />
           </Box>
         )}
+        
+        {/* 用于自动滚动的引用元素 */}
+        <div ref={messagesEndRef} />
       </Box>
 
       {/* 输入区域 */}
@@ -393,6 +502,19 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ onClose, id = 'ai-assistant' 
           {error}
         </Alert>
       </Snackbar>
+
+      <style>{`
+        @keyframes blink {
+          0% { opacity: 1; }
+          50% { opacity: 0; }
+          100% { opacity: 1; }
+        }
+        .cursor {
+          animation: blink 1s infinite;
+          font-weight: bold;
+          color: #1976d2;
+        }
+      `}</style>
     </Paper>
   );
 };
