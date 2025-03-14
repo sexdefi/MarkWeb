@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Paper, Box, Typography, Button, Toolbar, Snackbar, Alert, IconButton, Divider, Tooltip, Menu, MenuItem, Slider, Fade, useTheme } from '@mui/material';
+import { Paper, Box, Typography, Button, Toolbar, Snackbar, Alert, IconButton, Divider, 
+  Tooltip, Menu, MenuItem, Slider, Fade, useTheme, ListItemIcon, ListItemText, Switch,
+  FormControl, Select, SelectChangeEvent } from '@mui/material';
 import MDEditor, { commands } from '@uiw/react-md-editor';
 import { FileItem } from '../types';
 import { getFileContent, saveFile } from '../services/api';
@@ -7,15 +9,31 @@ import SaveIcon from '@mui/icons-material/Save';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import ArticleIcon from '@mui/icons-material/Article';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import FormatSizeIcon from '@mui/icons-material/FormatSize';
 import SelectAllIcon from '@mui/icons-material/SelectAll';
+import SettingsIcon from '@mui/icons-material/Settings';
+import FontDownloadIcon from '@mui/icons-material/FontDownload';
+import CompressIcon from '@mui/icons-material/Compress';
+import LightModeIcon from '@mui/icons-material/LightMode';
+import DarkModeIcon from '@mui/icons-material/DarkMode';
 // @ts-ignore
 import html2pdf from 'html2pdf.js';
 
 interface MarkdownEditorProps {
   selectedFile: FileItem | null;
 }
+
+// 可选字体列表
+const FONT_OPTIONS = [
+  { value: 'system-ui', label: '系统默认' },
+  { value: '"Noto Sans SC", sans-serif', label: 'Noto Sans' },
+  { value: '"Source Han Sans CN", sans-serif', label: '思源黑体' },
+  { value: '"Roboto", sans-serif', label: 'Roboto' },
+  { value: '"Fira Code", monospace', label: 'Fira Code' },
+  { value: '"Microsoft YaHei", sans-serif', label: '微软雅黑' },
+];
 
 const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
   const [content, setContent] = useState<string>('');
@@ -36,6 +54,13 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
   // 添加自动保存相关状态
   const [autoSaveTimer, setAutoSaveTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
   const [lastSavedTime, setLastSavedTime] = useState<Date | null>(null);
+  
+  // 新增设置菜单状态
+  const [settingsMenuAnchor, setSettingsMenuAnchor] = useState<null | HTMLElement>(null);
+  const [selectedFont, setSelectedFont] = useState<string>(FONT_OPTIONS[0].value);
+  const [isMiniMode, setIsMiniMode] = useState<boolean>(false);
+  const [darkMode, setDarkMode] = useState<boolean>(false);
+
   const theme = useTheme();
 
   useEffect(() => {
@@ -397,6 +422,244 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
     };
   }, [isModified, loading]); // 依赖项包含会影响处理函数的状态
 
+  // 设置菜单打开与关闭
+  const handleSettingsMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
+    setSettingsMenuAnchor(event.currentTarget);
+  };
+
+  const handleSettingsMenuClose = () => {
+    setSettingsMenuAnchor(null);
+  };
+
+  // 字体更改处理
+  const handleFontChange = (event: SelectChangeEvent<string>) => {
+    setSelectedFont(event.target.value as string);
+  };
+
+  // Mini模式切换
+  const toggleMiniMode = () => {
+    setIsMiniMode(!isMiniMode);
+  };
+
+  // 深色模式切换
+  const toggleDarkMode = () => {
+    setDarkMode(!darkMode);
+  };
+
+  // 一键复制Word格式文本
+  const copyWordFormattedText = () => {
+    if (!previewRef.current) return;
+    
+    try {
+      // 创建一个临时容器来处理HTML内容
+      const container = document.createElement('div');
+      container.innerHTML = previewRef.current.innerHTML;
+      
+      // 处理标题
+      const headings = container.querySelectorAll('h1, h2, h3, h4, h5, h6');
+      headings.forEach(heading => {
+        // 为标题添加Word样式
+        (heading as HTMLElement).style.fontWeight = 'bold';
+        
+        // 根据标题级别设置字体大小
+        const level = parseInt(heading.tagName.substring(1));
+        const fontSize = 22 - (level - 1) * 2;
+        (heading as HTMLElement).style.fontSize = `${fontSize}pt`;
+        
+        // 确保标题之后有空行
+        if (heading.nextSibling && heading.nextSibling.nodeName !== 'BR') {
+          const br = document.createElement('br');
+          heading.parentNode?.insertBefore(br, heading.nextSibling);
+        }
+      });
+      
+      // 处理段落
+      const paragraphs = container.querySelectorAll('p');
+      paragraphs.forEach(paragraph => {
+        // 添加段落样式
+        (paragraph as HTMLElement).style.margin = '0';
+        (paragraph as HTMLElement).style.lineHeight = '1.5';
+        
+        // 在段落后添加换行
+        if (paragraph.nextSibling && paragraph.nextSibling.nodeName !== 'BR') {
+          const br = document.createElement('br');
+          paragraph.parentNode?.insertBefore(br, paragraph.nextSibling);
+        }
+      });
+      
+      // 处理列表
+      const lists = container.querySelectorAll('ul, ol');
+      lists.forEach(list => {
+        // 确保列表具有适当的缩进
+        (list as HTMLElement).style.marginLeft = '20px';
+        
+        // 处理列表项
+        const items = list.querySelectorAll('li');
+        items.forEach((item, index) => {
+          // 为有序列表添加数字
+          if (list.tagName.toLowerCase() === 'ol') {
+            item.textContent = `${index + 1}. ${item.textContent}`;
+          } else {
+            // 为无序列表添加符号
+            item.textContent = `• ${item.textContent}`;
+          }
+          
+          // 添加行距
+          (item as HTMLElement).style.lineHeight = '1.5';
+          
+          // 移除默认的列表样式
+          (item as HTMLElement).style.listStyleType = 'none';
+        });
+      });
+      
+      // 处理表格
+      const tables = container.querySelectorAll('table');
+      tables.forEach(table => {
+        // 添加表格边框
+        (table as HTMLElement).style.borderCollapse = 'collapse';
+        (table as HTMLElement).style.width = '100%';
+        
+        // 处理表格单元格
+        const cells = table.querySelectorAll('th, td');
+        cells.forEach(cell => {
+          (cell as HTMLElement).style.border = '1px solid #000';
+          (cell as HTMLElement).style.padding = '4px 8px';
+        });
+        
+        // 处理表头单元格
+        const headerCells = table.querySelectorAll('th');
+        headerCells.forEach(headerCell => {
+          (headerCell as HTMLElement).style.backgroundColor = '#f0f0f0';
+          (headerCell as HTMLElement).style.fontWeight = 'bold';
+        });
+      });
+      
+      // 处理代码块
+      const codeBlocks = container.querySelectorAll('pre code');
+      codeBlocks.forEach(codeBlock => {
+        // 为代码块添加背景和边框
+        if (codeBlock.parentElement) {
+          (codeBlock.parentElement as HTMLElement).style.backgroundColor = '#f8f8f8';
+          (codeBlock.parentElement as HTMLElement).style.border = '1px solid #ddd';
+          (codeBlock.parentElement as HTMLElement).style.borderRadius = '3px';
+          (codeBlock.parentElement as HTMLElement).style.padding = '10px';
+          (codeBlock.parentElement as HTMLElement).style.fontFamily = 'monospace';
+          (codeBlock.parentElement as HTMLElement).style.whiteSpace = 'pre-wrap';
+        }
+      });
+      
+      // 处理行内代码
+      const inlineCodes = container.querySelectorAll('code:not(pre code)');
+      inlineCodes.forEach(code => {
+        (code as HTMLElement).style.backgroundColor = '#f8f8f8';
+        (code as HTMLElement).style.padding = '2px 4px';
+        (code as HTMLElement).style.borderRadius = '3px';
+        (code as HTMLElement).style.fontFamily = 'monospace';
+      });
+      
+      // 处理引用块
+      const blockquotes = container.querySelectorAll('blockquote');
+      blockquotes.forEach(blockquote => {
+        (blockquote as HTMLElement).style.borderLeft = '4px solid #ddd';
+        (blockquote as HTMLElement).style.paddingLeft = '10px';
+        (blockquote as HTMLElement).style.color = '#555';
+        (blockquote as HTMLElement).style.margin = '10px 0';
+      });
+      
+      // 处理图片
+      const images = container.querySelectorAll('img');
+      images.forEach(image => {
+        // 确保图片大小适中
+        (image as HTMLElement).style.maxWidth = '100%';
+        (image as HTMLElement).style.height = 'auto';
+      });
+      
+      // 获取处理后的HTML内容
+      const formattedHTML = container.innerHTML;
+      
+      // 将HTML复制到剪贴板
+      const blob = new Blob([formattedHTML], { type: 'text/html' });
+      const data = new ClipboardItem({ 'text/html': blob });
+      
+      navigator.clipboard.write([data]).then(() => {
+        showSnackbar('已复制Word格式文本到剪贴板', 'success');
+      }).catch((error) => {
+        console.error('复制Word格式文本失败:', error);
+        showSnackbar('复制Word格式文本失败', 'error');
+      });
+    } catch (error) {
+      console.error('处理Word格式文本时出错:', error);
+      showSnackbar('处理Word格式文本时出错', 'error');
+    }
+  };
+
+  // 渲染设置菜单
+  const renderSettingsMenu = () => (
+    <Menu
+      anchorEl={settingsMenuAnchor}
+      open={Boolean(settingsMenuAnchor)}
+      onClose={handleSettingsMenuClose}
+      TransitionComponent={Fade}
+      sx={{
+        '& .MuiPaper-root': {
+          borderRadius: '8px',
+          boxShadow: theme.shadows[4],
+          width: '250px'
+        }
+      }}
+    >
+      <MenuItem sx={{ height: '50px' }}>
+        <ListItemIcon>
+          <FontDownloadIcon fontSize="small" />
+        </ListItemIcon>
+        <ListItemText primary="字体选择" />
+      </MenuItem>
+      <MenuItem sx={{ px: 2, pt: 0, pb: 2 }}>
+        <FormControl fullWidth size="small">
+          <Select
+            value={selectedFont}
+            onChange={handleFontChange}
+            variant="outlined"
+          >
+            {FONT_OPTIONS.map((option) => (
+              <MenuItem key={option.value} value={option.value}>
+                {option.label}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+      </MenuItem>
+      
+      <Divider />
+      
+      <MenuItem onClick={toggleMiniMode}>
+        <ListItemIcon>
+          <CompressIcon fontSize="small" />
+        </ListItemIcon>
+        <ListItemText primary="Mini模式" />
+        <Switch
+          edge="end"
+          checked={isMiniMode}
+          onChange={toggleMiniMode}
+          size="small"
+        />
+      </MenuItem>
+      
+      <MenuItem onClick={toggleDarkMode}>
+        <ListItemIcon>
+          {darkMode ? <DarkModeIcon fontSize="small" /> : <LightModeIcon fontSize="small" />}
+        </ListItemIcon>
+        <ListItemText primary="深色模式" />
+        <Switch
+          edge="end"
+          checked={darkMode}
+          onChange={toggleDarkMode}
+          size="small"
+        />
+      </MenuItem>
+    </Menu>
+  );
+
   if (!selectedFile) {
     return (
       <Paper 
@@ -450,117 +713,169 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
         bgcolor: theme.palette.background.default
       }}
     >
-      <Toolbar 
-        variant="dense" 
-        sx={{ 
-          justifyContent: 'space-between', 
-          bgcolor: theme.palette.background.paper,
-          minHeight: '48px',
-          flex: '0 0 auto',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-          p: { xs: 0.5, sm: 1 },
-          overflow: 'hidden',
-          borderBottom: `1px solid ${theme.palette.divider}`
-        }}
-      >
-        <Box sx={{ 
-          display: 'flex', 
-          alignItems: 'center',
-          flexGrow: 1,
-          minWidth: 0,
-          gap: { xs: 0.5, sm: 1 }
-        }}>
-          <Typography 
-            variant="subtitle1" 
-            sx={{ 
-              fontWeight: 'medium',
-              flexShrink: 1,
-              minWidth: 0,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-              color: theme.palette.text.primary
-            }}
-          >
-            {selectedFile.name} {isModified ? '(已修改)' : ''}
-            {lastSavedTime && !isModified && (
-              <Typography 
-                component="span" 
-                variant="caption" 
-                sx={{ 
-                  ml: 1, 
-                  color: theme.palette.text.secondary,
-                  display: { xs: 'none', sm: 'inline' }
-                }}
-              >
-                (上次保存: {lastSavedTime.toLocaleTimeString()})
-              </Typography>
-            )}
-          </Typography>
-          
-          <Box sx={{ 
-            display: 'flex', 
-            gap: { xs: 0.5, sm: 1 },
-            flexShrink: 0 // 防止图标缩小
-          }}>
-            <Tooltip title="一键全选文本">
-              <IconButton size="small" onClick={selectAllText}>
-                <SelectAllIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
-            
-            <Tooltip title="复制纯文本">
-              <IconButton size="small" onClick={copyRenderedText}>
-                <ContentCopyIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
-
-            <Tooltip title="导出PDF">
-              <IconButton
-                size="small"
-                onClick={exportToPdf}
-                disabled={isExporting}
-              >
-                <PictureAsPdfIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
-
-            <Tooltip title="调整字体大小">
-              <IconButton size="small" onClick={handleFontSizeMenuOpen}>
-                <FormatSizeIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
-
-            <Tooltip title={showPreview ? "收起预览" : "显示预览"}>
-              <IconButton size="small" onClick={togglePreview}>
-                {showPreview ? <ChevronLeftIcon/> : <ChevronRightIcon/>}
-              </IconButton>
-            </Tooltip>
-          </Box>
-        </Box>
-        
-        <Button
-          variant="contained"
-          color="primary"
-          size="small"
-          startIcon={<SaveIcon />}
-          onClick={handleSave}
-          disabled={!isModified || loading}
-          sx={{
-            ml: { xs: 1, sm: 2 },
-            minWidth: { xs: 'auto', sm: '80px' },
-            boxShadow: '0 2px 5px rgba(0,0,0,0.2)',
-            transition: 'all 0.2s',
-            '&:hover': {
-              transform: 'translateY(-2px)',
-              boxShadow: '0 4px 8px rgba(0,0,0,0.2)'
-            }
+      {/* 主工具栏 */}
+      {!isMiniMode && (
+        <Toolbar 
+          variant="dense" 
+          sx={{ 
+            justifyContent: 'space-between', 
+            bgcolor: theme.palette.background.paper,
+            minHeight: '48px',
+            flex: '0 0 auto',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+            p: { xs: 0.5, sm: 1 },
+            overflow: 'hidden',
+            borderBottom: `1px solid ${theme.palette.divider}`
           }}
         >
-          {/* 在小屏幕上只显示图标 */}
-          <Box sx={{ display: { xs: 'none', sm: 'block' } }}>保存</Box>
-        </Button>
-      </Toolbar>
+          <Box sx={{ 
+            display: 'flex', 
+            alignItems: 'center',
+            flexGrow: 1,
+            minWidth: 0,
+            gap: { xs: 0.5, sm: 1 }
+          }}>
+            <Typography 
+              variant="subtitle1" 
+              sx={{ 
+                fontWeight: 'medium',
+                flexShrink: 1,
+                minWidth: 0,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                color: theme.palette.text.primary
+              }}
+            >
+              {selectedFile.name} {isModified ? '(已修改)' : ''}
+              {lastSavedTime && !isModified && (
+                <Typography 
+                  component="span" 
+                  variant="caption" 
+                  sx={{ 
+                    ml: 1, 
+                    color: theme.palette.text.secondary,
+                    display: { xs: 'none', sm: 'inline' }
+                  }}
+                >
+                  (上次保存: {lastSavedTime.toLocaleTimeString()})
+                </Typography>
+              )}
+            </Typography>
+            
+            <Box sx={{ 
+              display: 'flex', 
+              gap: { xs: 0.5, sm: 1 },
+              flexShrink: 0
+            }}>
+              <Tooltip title="一键全选文本">
+                <IconButton size="small" onClick={selectAllText}>
+                  <SelectAllIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+              
+              <Tooltip title="复制纯文本">
+                <IconButton size="small" onClick={copyRenderedText}>
+                  <ContentCopyIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+              
+              <Tooltip title="复制Word格式文本">
+                <IconButton size="small" onClick={copyWordFormattedText}>
+                  <ArticleIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+
+              <Tooltip title="导出PDF">
+                <IconButton
+                  size="small"
+                  onClick={exportToPdf}
+                  disabled={isExporting}
+                >
+                  <PictureAsPdfIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+
+              <Tooltip title="调整字体大小">
+                <IconButton size="small" onClick={handleFontSizeMenuOpen}>
+                  <FormatSizeIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+
+              <Tooltip title="设置">
+                <IconButton size="small" onClick={handleSettingsMenuOpen}>
+                  <SettingsIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+
+              <Tooltip title={showPreview ? "收起预览" : "显示预览"}>
+                <IconButton size="small" onClick={togglePreview}>
+                  {showPreview ? <ChevronLeftIcon/> : <ChevronRightIcon/>}
+                </IconButton>
+              </Tooltip>
+            </Box>
+          </Box>
+          
+          <Button
+            variant="contained"
+            color="primary"
+            size="small"
+            startIcon={<SaveIcon />}
+            onClick={handleSave}
+            disabled={!isModified || loading}
+            sx={{
+              ml: { xs: 1, sm: 2 },
+              minWidth: { xs: 'auto', sm: '80px' },
+              boxShadow: '0 2px 5px rgba(0,0,0,0.2)',
+              transition: 'all 0.2s',
+              '&:hover': {
+                transform: 'translateY(-2px)',
+                boxShadow: '0 4px 8px rgba(0,0,0,0.2)'
+              }
+            }}
+          >
+            {/* 在小屏幕上只显示图标 */}
+            <Box sx={{ display: { xs: 'none', sm: 'block' } }}>保存</Box>
+          </Button>
+        </Toolbar>
+      )}
+      
+      {/* Mini 模式工具栏 */}
+      {isMiniMode && (
+        <Box sx={{ 
+          display: 'flex', 
+          justifyContent: 'flex-end',
+          alignItems: 'center',
+          px: 1,
+          py: 0.5,
+          backgroundColor: 'rgba(0,0,0,0.03)',
+          borderBottom: `1px solid ${theme.palette.divider}`
+        }}>
+          <Tooltip title="设置">
+            <IconButton size="small" onClick={handleSettingsMenuOpen}>
+              <SettingsIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          
+          <Tooltip title={showPreview ? "收起预览" : "显示预览"}>
+            <IconButton size="small" onClick={togglePreview}>
+              {showPreview ? <ChevronLeftIcon/> : <ChevronRightIcon/>}
+            </IconButton>
+          </Tooltip>
+          
+          <Button
+            variant="contained"
+            color="primary"
+            size="small"
+            startIcon={<SaveIcon />}
+            onClick={handleSave}
+            disabled={!isModified || loading}
+            sx={{ ml: 1, minWidth: 'auto' }}
+          >
+            <Box sx={{ display: { xs: 'none', sm: 'block' } }}>保存</Box>
+          </Button>
+        </Box>
+      )}
       
       <Box sx={{ 
         flex: '1 1 auto',
@@ -613,6 +928,9 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
           </MenuItem>
         </Menu>
 
+        {/* 设置菜单 */}
+        {renderSettingsMenu()}
+
         {/* 编辑器区域 */}
         <Box 
           ref={editorRef}
@@ -622,7 +940,8 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
             flexDirection: 'column',
             overflow: 'hidden',
             transition: 'all 0.3s ease',
-            bgcolor: theme.palette.background.paper
+            bgcolor: theme.palette.background.paper,
+            fontFamily: selectedFont
           }}
         >
           <MDEditor
@@ -630,7 +949,7 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
             onChange={handleContentChange}
             preview="edit"
             style={{ flex: '1 1 auto', overflow: 'hidden' }}
-            hideToolbar={false}
+            hideToolbar={isMiniMode}
             enableScroll={true}
             toolbarHeight={50}
             height="100%"
@@ -641,7 +960,8 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
                 padding: '12px 16px',
                 color: theme.palette.text.primary,
                 backgroundColor: theme.palette.background.paper,
-                borderColor: theme.palette.divider
+                borderColor: theme.palette.divider,
+                fontFamily: selectedFont
               }
             }}
             commands={[
@@ -694,6 +1014,7 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
                     lineHeight: 1.6,
                     padding: '0 16px',
                     color: theme.palette.text.primary,
+                    fontFamily: selectedFont,
                     '& img': {
                       maxWidth: '100%',
                       height: 'auto',
@@ -722,13 +1043,17 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
                       backgroundColor: theme.palette.action.hover,
                       padding: '2px 4px',
                       borderRadius: '3px',
-                      fontSize: '0.9em'
+                      fontSize: '0.9em',
+                      fontFamily: FONT_OPTIONS[4].value // 代码使用等宽字体
                     },
                     '& pre': {
                       backgroundColor: theme.palette.action.hover,
                       padding: '16px',
                       borderRadius: '4px',
-                      overflow: 'auto'
+                      overflow: 'auto',
+                      '& code': {
+                        fontFamily: FONT_OPTIONS[4].value // 代码块使用等宽字体
+                      }
                     }
                   }
                 }}
