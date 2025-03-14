@@ -1,13 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Paper, Box, Typography, Button, Toolbar, Snackbar, Alert, IconButton, Divider, 
   Tooltip, Menu, MenuItem, Slider, Fade, useTheme, ListItemIcon, ListItemText, Switch,
-  FormControl, Select, SelectChangeEvent } from '@mui/material';
+  FormControl, Select, SelectChangeEvent, ToggleButtonGroup, ToggleButton } from '@mui/material';
 import MDEditor, { commands } from '@uiw/react-md-editor';
 import { FileItem } from '../types';
 import { getFileContent, saveFile } from '../services/api';
 import SaveIcon from '@mui/icons-material/Save';
-import ChevronRightIcon from '@mui/icons-material/ChevronRight';
-import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import ArticleIcon from '@mui/icons-material/Article';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
@@ -18,11 +16,17 @@ import FontDownloadIcon from '@mui/icons-material/FontDownload';
 import CompressIcon from '@mui/icons-material/Compress';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
+import EditIcon from '@mui/icons-material/Edit';
+import VisibilityIcon from '@mui/icons-material/Visibility';
+import SplitscreenIcon from '@mui/icons-material/Splitscreen';
+import ImageIcon from '@mui/icons-material/Image';
+import SmartToyIcon from '@mui/icons-material/SmartToy';
 // @ts-ignore
 import html2pdf from 'html2pdf.js';
 
 interface MarkdownEditorProps {
   selectedFile: FileItem | null;
+  onAnalyzeFile: (content: string) => void;
 }
 
 // 可选字体列表
@@ -35,42 +39,171 @@ const FONT_OPTIONS = [
   { value: '"Microsoft YaHei", sans-serif', label: '微软雅黑' },
 ];
 
-const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
+// 视图模式枚举
+enum ViewMode {
+  Edit = 'edit',
+  Split = 'split',
+  Preview = 'preview'
+}
+
+// 用户配置接口
+interface UserConfig {
+  fontSize: number;
+  selectedFont: string;
+  isMiniMode: boolean;
+  darkMode: boolean;
+  viewMode: ViewMode;
+}
+
+// 默认配置
+const DEFAULT_CONFIG: UserConfig = {
+  fontSize: 14,
+  selectedFont: FONT_OPTIONS[0].value,
+  isMiniMode: false,
+  darkMode: false,
+  viewMode: ViewMode.Split
+};
+
+// 支持的图片文件扩展名
+const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg'];
+
+const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile, onAnalyzeFile }) => {
   const [content, setContent] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
   const [isModified, setIsModified] = useState<boolean>(false);
   const [snackbarOpen, setSnackbarOpen] = useState<boolean>(false);
   const [snackbarMessage, setSnackbarMessage] = useState<string>('');
   const [snackbarSeverity, setSnackbarSeverity] = useState<'success' | 'error'>('success');
-  const [showPreview, setShowPreview] = useState<boolean>(true);
   const previewRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<HTMLDivElement>(null);
+  const editorTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   
-  // 新增状态
-  const [fontSize, setFontSize] = useState<number>(14);
+  // 配置状态
+  const [fontSize, setFontSize] = useState<number>(DEFAULT_CONFIG.fontSize);
   const [fontSizeMenuAnchor, setFontSizeMenuAnchor] = useState<null | HTMLElement>(null);
   const [isExporting, setIsExporting] = useState<boolean>(false);
-
-  // 添加自动保存相关状态
   const [autoSaveTimer, setAutoSaveTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
   const [lastSavedTime, setLastSavedTime] = useState<Date | null>(null);
-  
-  // 新增设置菜单状态
   const [settingsMenuAnchor, setSettingsMenuAnchor] = useState<null | HTMLElement>(null);
-  const [selectedFont, setSelectedFont] = useState<string>(FONT_OPTIONS[0].value);
-  const [isMiniMode, setIsMiniMode] = useState<boolean>(false);
-  const [darkMode, setDarkMode] = useState<boolean>(false);
+  const [selectedFont, setSelectedFont] = useState<string>(DEFAULT_CONFIG.selectedFont);
+  const [isMiniMode, setIsMiniMode] = useState<boolean>(DEFAULT_CONFIG.isMiniMode);
+  const [darkMode, setDarkMode] = useState<boolean>(DEFAULT_CONFIG.darkMode);
+  const [viewMode, setViewMode] = useState<ViewMode>(DEFAULT_CONFIG.viewMode);
+  const [isImageFile, setIsImageFile] = useState<boolean>(false);
 
   const theme = useTheme();
 
+  // 检查文件是否是图片
+  const checkIfImageFile = useCallback((file: FileItem | null) => {
+    if (!file) return false;
+    return IMAGE_EXTENSIONS.some(ext => file.name.toLowerCase().endsWith(ext));
+  }, []);
+
+  // 从 localStorage 加载配置
+  useEffect(() => {
+    try {
+      const savedConfig = localStorage.getItem('markdownEditorConfig');
+      if (savedConfig) {
+        const config = JSON.parse(savedConfig) as UserConfig;
+        setFontSize(config.fontSize || DEFAULT_CONFIG.fontSize);
+        setSelectedFont(config.selectedFont || DEFAULT_CONFIG.selectedFont);
+        setIsMiniMode(config.isMiniMode !== undefined ? config.isMiniMode : DEFAULT_CONFIG.isMiniMode);
+        setDarkMode(config.darkMode !== undefined ? config.darkMode : DEFAULT_CONFIG.darkMode);
+        setViewMode(config.viewMode || DEFAULT_CONFIG.viewMode);
+      }
+    } catch (error) {
+      console.error('Error loading config from localStorage:', error);
+    }
+  }, []);
+
+  // 保存配置到 localStorage
+  const saveConfig = useCallback(() => {
+    try {
+      const config: UserConfig = {
+        fontSize,
+        selectedFont,
+        isMiniMode,
+        darkMode,
+        viewMode
+      };
+      localStorage.setItem('markdownEditorConfig', JSON.stringify(config));
+    } catch (error) {
+      console.error('Error saving config to localStorage:', error);
+    }
+  }, [fontSize, selectedFont, isMiniMode, darkMode, viewMode]);
+
+  // 配置改变时保存
+  useEffect(() => {
+    saveConfig();
+  }, [fontSize, selectedFont, isMiniMode, darkMode, viewMode, saveConfig]);
+
   useEffect(() => {
     if (selectedFile && !selectedFile.isDirectory) {
-      loadFileContent();
+      const isImage = checkIfImageFile(selectedFile);
+      setIsImageFile(isImage);
+      if (!isImage) {
+        loadFileContent();
+      }
     } else {
       setContent('');
       setIsModified(false);
+      setIsImageFile(false);
     }
-  }, [selectedFile]);
+  }, [selectedFile, checkIfImageFile]);
+
+  // 获取编辑器文本区域引用
+  useEffect(() => {
+    if (editorRef.current) {
+      const textarea = editorRef.current.querySelector('textarea');
+      if (textarea) {
+        editorTextareaRef.current = textarea;
+      }
+    }
+  }, [viewMode, content]);
+
+  // 滚动同步功能
+  const handleEditorScroll = useCallback(() => {
+    if (viewMode !== ViewMode.Split || !editorTextareaRef.current || !previewRef.current) return;
+
+    const editorElement = editorTextareaRef.current;
+    const previewElement = previewRef.current;
+    
+    const editorScrollPosition = editorElement.scrollTop / (editorElement.scrollHeight - editorElement.clientHeight);
+    const previewScrollMax = previewElement.scrollHeight - previewElement.clientHeight;
+    
+    previewElement.scrollTop = editorScrollPosition * previewScrollMax;
+  }, [viewMode]);
+
+  // 处理预览区滚动
+  const handlePreviewScroll = useCallback(() => {
+    if (viewMode !== ViewMode.Split || !editorTextareaRef.current || !previewRef.current) return;
+
+    const editorElement = editorTextareaRef.current;
+    const previewElement = previewRef.current;
+    
+    const previewScrollPosition = previewElement.scrollTop / (previewElement.scrollHeight - previewElement.clientHeight);
+    const editorScrollMax = editorElement.scrollHeight - editorElement.clientHeight;
+    
+    editorElement.scrollTop = previewScrollPosition * editorScrollMax;
+  }, [viewMode]);
+
+  // 设置滚动事件监听
+  useEffect(() => {
+    if (viewMode === ViewMode.Split) {
+      const editorTextarea = editorTextareaRef.current;
+      const previewDiv = previewRef.current;
+      
+      if (editorTextarea && previewDiv) {
+        editorTextarea.addEventListener('scroll', handleEditorScroll);
+        previewDiv.addEventListener('scroll', handlePreviewScroll);
+        
+        return () => {
+          editorTextarea.removeEventListener('scroll', handleEditorScroll);
+          previewDiv.removeEventListener('scroll', handlePreviewScroll);
+        };
+      }
+    }
+  }, [viewMode, handleEditorScroll, handlePreviewScroll]);
 
   const loadFileContent = async () => {
     if (!selectedFile) return;
@@ -107,10 +240,6 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
       console.error('Error saving file:', error);
       showSnackbar('保存文件失败', 'error');
     }
-  };
-
-  const togglePreview = () => {
-    setShowPreview(!showPreview);
   };
 
   const showSnackbar = (message: string, severity: 'success' | 'error') => {
@@ -378,7 +507,7 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
     };
   }, [content, isModified]);
 
-  // 优化快捷键处理
+  // 处理快捷键
   const handleEditorKeyDown = (event: KeyboardEvent) => {
     // 已有的快捷键
     if ((event.ctrlKey || event.metaKey) && event.key === 's') {
@@ -393,24 +522,39 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
     }
     if ((event.ctrlKey || event.metaKey) && event.key === 'p') {
       event.preventDefault();
-      togglePreview();
+      // 切换视图模式
+      const newMode = viewMode === ViewMode.Preview ? ViewMode.Edit : ViewMode.Preview;
+      setViewMode(newMode);
     }
     
     // 新增快捷键
+    // Ctrl/Cmd + E: 编辑模式
+    if ((event.ctrlKey || event.metaKey) && event.key === 'e') {
+      event.preventDefault();
+      setViewMode(ViewMode.Edit);
+    }
+    // Ctrl/Cmd + B: 双栏模式
+    if ((event.ctrlKey || event.metaKey) && event.key === 'b') {
+      event.preventDefault();
+      setViewMode(ViewMode.Split);
+    }
+    // Ctrl/Cmd + V: 预览模式（重写了粘贴，只在编辑区可用）
+    if ((event.ctrlKey || event.metaKey) && event.key === 'v' && event.altKey) {
+      event.preventDefault();
+      setViewMode(ViewMode.Preview);
+    }
+    
     // Ctrl/Cmd + Z: 撤销
     if ((event.ctrlKey || event.metaKey) && event.key === 'z' && !event.shiftKey) {
-      event.preventDefault();
-      // TODO: 实现撤销功能
+      // 默认行为即可，无需额外处理
     }
     // Ctrl/Cmd + Shift + Z: 重做
     if ((event.ctrlKey || event.metaKey) && event.key === 'z' && event.shiftKey) {
-      event.preventDefault();
-      // TODO: 实现重做功能
+      // 默认行为即可，无需额外处理
     }
     // Ctrl/Cmd + F: 查找
     if ((event.ctrlKey || event.metaKey) && event.key === 'f') {
-      event.preventDefault();
-      // TODO: 实现查找功能
+      // 默认行为即可，无需额外处理
     }
   };
 
@@ -420,7 +564,7 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
     return () => {
       document.removeEventListener('keydown', handleEditorKeyDown);
     };
-  }, [isModified, loading]); // 依赖项包含会影响处理函数的状态
+  }, [isModified, loading, viewMode]); // 依赖项包含会影响处理函数的状态
 
   // 设置菜单打开与关闭
   const handleSettingsMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
@@ -593,72 +737,18 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
     }
   };
 
-  // 渲染设置菜单
-  const renderSettingsMenu = () => (
-    <Menu
-      anchorEl={settingsMenuAnchor}
-      open={Boolean(settingsMenuAnchor)}
-      onClose={handleSettingsMenuClose}
-      TransitionComponent={Fade}
-      sx={{
-        '& .MuiPaper-root': {
-          borderRadius: '8px',
-          boxShadow: theme.shadows[4],
-          width: '250px'
-        }
-      }}
-    >
-      <MenuItem sx={{ height: '50px' }}>
-        <ListItemIcon>
-          <FontDownloadIcon fontSize="small" />
-        </ListItemIcon>
-        <ListItemText primary="字体选择" />
-      </MenuItem>
-      <MenuItem sx={{ px: 2, pt: 0, pb: 2 }}>
-        <FormControl fullWidth size="small">
-          <Select
-            value={selectedFont}
-            onChange={handleFontChange}
-            variant="outlined"
-          >
-            {FONT_OPTIONS.map((option) => (
-              <MenuItem key={option.value} value={option.value}>
-                {option.label}
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-      </MenuItem>
-      
-      <Divider />
-      
-      <MenuItem onClick={toggleMiniMode}>
-        <ListItemIcon>
-          <CompressIcon fontSize="small" />
-        </ListItemIcon>
-        <ListItemText primary="Mini模式" />
-        <Switch
-          edge="end"
-          checked={isMiniMode}
-          onChange={toggleMiniMode}
-          size="small"
-        />
-      </MenuItem>
-      
-      <MenuItem onClick={toggleDarkMode}>
-        <ListItemIcon>
-          {darkMode ? <DarkModeIcon fontSize="small" /> : <LightModeIcon fontSize="small" />}
-        </ListItemIcon>
-        <ListItemText primary="深色模式" />
-        <Switch
-          edge="end"
-          checked={darkMode}
-          onChange={toggleDarkMode}
-          size="small"
-        />
-      </MenuItem>
-    </Menu>
-  );
+  // 处理视图模式更改
+  const handleViewModeChange = (_: React.MouseEvent<HTMLElement>, newMode: ViewMode) => {
+    if (newMode !== null) {
+      setViewMode(newMode);
+    }
+  };
+
+  // 确定是否显示预览区
+  const shouldShowPreview = viewMode === ViewMode.Preview || viewMode === ViewMode.Split;
+  
+  // 确定是否显示编辑区
+  const shouldShowEditor = viewMode === ViewMode.Edit || viewMode === ViewMode.Split;
 
   if (!selectedFile) {
     return (
@@ -763,25 +853,53 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
               )}
             </Typography>
             
+            {/* 视图模式切换按钮组 */}
+            <ToggleButtonGroup
+              value={viewMode}
+              exclusive
+              onChange={handleViewModeChange}
+              size="small"
+              sx={{ 
+                ml: { xs: 1, sm: 2 },
+                display: { xs: 'none', sm: 'flex' } // 在小屏幕上隐藏，只在设置菜单中显示
+              }}
+            >
+              <ToggleButton value={ViewMode.Edit}>
+                <Tooltip title="编辑模式">
+                  <EditIcon fontSize="small" />
+                </Tooltip>
+              </ToggleButton>
+              <ToggleButton value={ViewMode.Split}>
+                <Tooltip title="编辑/预览模式">
+                  <SplitscreenIcon fontSize="small" />
+                </Tooltip>
+              </ToggleButton>
+              <ToggleButton value={ViewMode.Preview}>
+                <Tooltip title="预览模式">
+                  <VisibilityIcon fontSize="small" />
+                </Tooltip>
+              </ToggleButton>
+            </ToggleButtonGroup>
+            
             <Box sx={{ 
               display: 'flex', 
               gap: { xs: 0.5, sm: 1 },
               flexShrink: 0
             }}>
               <Tooltip title="一键全选文本">
-                <IconButton size="small" onClick={selectAllText}>
+                <IconButton size="small" onClick={selectAllText} disabled={isImageFile}>
                   <SelectAllIcon fontSize="small" />
                 </IconButton>
               </Tooltip>
               
               <Tooltip title="复制纯文本">
-                <IconButton size="small" onClick={copyRenderedText}>
+                <IconButton size="small" onClick={copyRenderedText} disabled={isImageFile}>
                   <ContentCopyIcon fontSize="small" />
                 </IconButton>
               </Tooltip>
               
               <Tooltip title="复制Word格式文本">
-                <IconButton size="small" onClick={copyWordFormattedText}>
+                <IconButton size="small" onClick={copyWordFormattedText} disabled={isImageFile}>
                   <ArticleIcon fontSize="small" />
                 </IconButton>
               </Tooltip>
@@ -790,14 +908,14 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
                 <IconButton
                   size="small"
                   onClick={exportToPdf}
-                  disabled={isExporting}
+                  disabled={isExporting || isImageFile}
                 >
                   <PictureAsPdfIcon fontSize="small" />
                 </IconButton>
               </Tooltip>
 
               <Tooltip title="调整字体大小">
-                <IconButton size="small" onClick={handleFontSizeMenuOpen}>
+                <IconButton size="small" onClick={handleFontSizeMenuOpen} disabled={isImageFile}>
                   <FormatSizeIcon fontSize="small" />
                 </IconButton>
               </Tooltip>
@@ -808,9 +926,12 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
                 </IconButton>
               </Tooltip>
 
-              <Tooltip title={showPreview ? "收起预览" : "显示预览"}>
-                <IconButton size="small" onClick={togglePreview}>
-                  {showPreview ? <ChevronLeftIcon/> : <ChevronRightIcon/>}
+              <Tooltip title="AI分析文件">
+                <IconButton 
+                  onClick={() => onAnalyzeFile(content)}
+                  disabled={!content || loading}
+                >
+                  <SmartToyIcon />
                 </IconButton>
               </Tooltip>
             </Box>
@@ -822,7 +943,7 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
             size="small"
             startIcon={<SaveIcon />}
             onClick={handleSave}
-            disabled={!isModified || loading}
+            disabled={!isModified || loading || isImageFile}
             sx={{
               ml: { xs: 1, sm: 2 },
               minWidth: { xs: 'auto', sm: '80px' },
@@ -851,15 +972,28 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
           backgroundColor: 'rgba(0,0,0,0.03)',
           borderBottom: `1px solid ${theme.palette.divider}`
         }}>
+          {/* 视图模式切换按钮组（Mini模式下显示） */}
+          <ToggleButtonGroup
+            value={viewMode}
+            exclusive
+            onChange={handleViewModeChange}
+            size="small"
+            sx={{ mr: 'auto' }}
+          >
+            <ToggleButton value={ViewMode.Edit}>
+              <EditIcon fontSize="small" />
+            </ToggleButton>
+            <ToggleButton value={ViewMode.Split}>
+              <SplitscreenIcon fontSize="small" />
+            </ToggleButton>
+            <ToggleButton value={ViewMode.Preview}>
+              <VisibilityIcon fontSize="small" />
+            </ToggleButton>
+          </ToggleButtonGroup>
+          
           <Tooltip title="设置">
             <IconButton size="small" onClick={handleSettingsMenuOpen}>
               <SettingsIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          
-          <Tooltip title={showPreview ? "收起预览" : "显示预览"}>
-            <IconButton size="small" onClick={togglePreview}>
-              {showPreview ? <ChevronLeftIcon/> : <ChevronRightIcon/>}
             </IconButton>
           </Tooltip>
           
@@ -869,7 +1003,7 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
             size="small"
             startIcon={<SaveIcon />}
             onClick={handleSave}
-            disabled={!isModified || loading}
+            disabled={!isModified || loading || isImageFile}
             sx={{ ml: 1, minWidth: 'auto' }}
           >
             <Box sx={{ display: { xs: 'none', sm: 'block' } }}>保存</Box>
@@ -885,7 +1019,192 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
         position: 'relative',
         bgcolor: theme.palette.background.default
       }}>
-        {/* 添加字体大小菜单 */}
+        {/* 图片预览 */}
+        {isImageFile && selectedFile && (
+          <Box 
+            sx={{ 
+              flex: 1,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              p: 2,
+              bgcolor: '#000',
+              position: 'relative'
+            }}
+          >
+            <Box 
+              sx={{ 
+                position: 'absolute',
+                top: 10,
+                left: 10,
+                color: '#fff',
+                bgcolor: 'rgba(0,0,0,0.5)',
+                px: 1,
+                py: 0.5,
+                borderRadius: 1,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1
+              }}
+            >
+              <ImageIcon fontSize="small" />
+              <Typography variant="body2">{selectedFile.name}</Typography>
+            </Box>
+            <img 
+              src={`/api/files/content/${selectedFile.path}`} 
+              alt={selectedFile.name}
+              style={{
+                maxWidth: '100%',
+                maxHeight: '100%',
+                objectFit: 'contain'
+              }}
+            />
+          </Box>
+        )}
+
+        {!isImageFile && (
+          <>
+            {/* 编辑区域 */}
+            {shouldShowEditor && (
+              <Box 
+                ref={editorRef}
+                sx={{ 
+                  flex: shouldShowPreview ? '1 1 50%' : '1 1 100%',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  overflow: 'hidden',
+                  transition: 'all 0.3s ease',
+                  bgcolor: theme.palette.background.paper,
+                  fontFamily: selectedFont
+                }}
+              >
+                <MDEditor
+                  value={content}
+                  onChange={handleContentChange}
+                  preview="edit"
+                  style={{ flex: '1 1 auto', overflow: 'hidden' }}
+                  hideToolbar={isMiniMode}
+                  enableScroll={true}
+                  toolbarHeight={50}
+                  height="100%"
+                  textareaProps={{
+                    style: {
+                      fontSize: `${fontSize}px`,
+                      lineHeight: '1.6',
+                      padding: '12px 16px',
+                      color: theme.palette.text.primary,
+                      backgroundColor: theme.palette.background.paper,
+                      borderColor: theme.palette.divider,
+                      fontFamily: selectedFont
+                    }
+                  }}
+                  commands={[
+                    commands.bold,
+                    commands.italic,
+                    commands.strikethrough,
+                    commands.hr,
+                    commands.title,
+                    commands.divider,
+                    commands.link,
+                    commands.quote,
+                    commands.code,
+                    commands.codeBlock,
+                    commands.image,
+                    commands.divider,
+                    commands.help
+                  ]}
+                  extraCommands={[
+                    {
+                      name: 'save',
+                      keyCommand: 'save',
+                      buttonProps: { 'aria-label': '保存' },
+                      icon: <SaveIcon />,
+                      execute: handleSave,
+                    }
+                  ]}
+                />
+              </Box>
+            )}
+
+            {/* 分隔线 */}
+            {shouldShowEditor && shouldShowPreview && (
+              <Divider orientation="vertical" flexItem />
+            )}
+
+            {/* 预览区域 */}
+            {shouldShowPreview && (
+              <Box sx={{ 
+                flex: shouldShowEditor ? '1 1 50%' : '1 1 100%',
+                overflow: 'auto',
+                p: 2,
+                bgcolor: theme.palette.background.paper,
+                transition: 'all 0.3s ease',
+                display: 'flex',
+                flexDirection: 'column'
+              }}>
+                <Box 
+                  ref={previewRef}
+                  sx={{ 
+                    flex: '1 1 auto', 
+                    overflow: 'auto',
+                    '& .wmde-markdown': {
+                      fontSize: `${fontSize}px`,
+                      lineHeight: 1.6,
+                      padding: '0 16px',
+                      color: theme.palette.text.primary,
+                      fontFamily: selectedFont,
+                      '& img': {
+                        maxWidth: '100%',
+                        height: 'auto',
+                        borderRadius: '4px',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+                      },
+                      '& table': {
+                        width: '100%',
+                        borderCollapse: 'collapse',
+                        marginBottom: '1rem',
+                        '& th, & td': {
+                          border: `1px solid ${theme.palette.divider}`,
+                          padding: '8px 12px'
+                        },
+                        '& th': {
+                          backgroundColor: theme.palette.action.hover
+                        }
+                      },
+                      '& blockquote': {
+                        borderLeft: `4px solid ${theme.palette.primary.main}`,
+                        backgroundColor: theme.palette.action.hover,
+                        padding: '12px 16px',
+                        margin: '16px 0'
+                      },
+                      '& code': {
+                        backgroundColor: theme.palette.action.hover,
+                        padding: '2px 4px',
+                        borderRadius: '3px',
+                        fontSize: '0.9em',
+                        fontFamily: FONT_OPTIONS[4].value // 代码使用等宽字体
+                      },
+                      '& pre': {
+                        backgroundColor: theme.palette.action.hover,
+                        padding: '16px',
+                        borderRadius: '4px',
+                        overflow: 'auto',
+                        '& code': {
+                          fontFamily: FONT_OPTIONS[4].value // 代码块使用等宽字体
+                        }
+                      }
+                    }
+                  }}
+                >
+                  <MDEditor.Markdown source={content} />
+                </Box>
+              </Box>
+            )}
+          </>
+        )}
+        
+        {/* 字体大小菜单 */}
         <Menu
           anchorEl={fontSizeMenuAnchor}
           open={Boolean(fontSizeMenuAnchor)}
@@ -929,140 +1248,104 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
         </Menu>
 
         {/* 设置菜单 */}
-        {renderSettingsMenu()}
-
-        {/* 编辑器区域 */}
-        <Box 
-          ref={editorRef}
-          sx={{ 
-            flex: showPreview ? '1 1 50%' : '1 1 100%',
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden',
-            transition: 'all 0.3s ease',
-            bgcolor: theme.palette.background.paper,
-            fontFamily: selectedFont
+        <Menu
+          anchorEl={settingsMenuAnchor}
+          open={Boolean(settingsMenuAnchor)}
+          onClose={handleSettingsMenuClose}
+          TransitionComponent={Fade}
+          sx={{
+            '& .MuiPaper-root': {
+              borderRadius: '8px',
+              boxShadow: theme.shadows[4],
+              width: '250px'
+            }
           }}
         >
-          <MDEditor
-            value={content}
-            onChange={handleContentChange}
-            preview="edit"
-            style={{ flex: '1 1 auto', overflow: 'hidden' }}
-            hideToolbar={isMiniMode}
-            enableScroll={true}
-            toolbarHeight={50}
-            height="100%"
-            textareaProps={{
-              style: {
-                fontSize: `${fontSize}px`,
-                lineHeight: '1.6',
-                padding: '12px 16px',
-                color: theme.palette.text.primary,
-                backgroundColor: theme.palette.background.paper,
-                borderColor: theme.palette.divider,
-                fontFamily: selectedFont
-              }
-            }}
-            commands={[
-              commands.bold,
-              commands.italic,
-              commands.strikethrough,
-              commands.hr,
-              commands.title,
-              commands.divider,
-              commands.link,
-              commands.quote,
-              commands.code,
-              commands.codeBlock,
-              commands.image,
-              commands.divider,
-              commands.help
-            ]}
-            extraCommands={[
-              {
-                name: 'save',
-                keyCommand: 'save',
-                buttonProps: { 'aria-label': '保存' },
-                icon: <SaveIcon />,
-                execute: handleSave,
-              }
-            ]}
-          />
-        </Box>
-
-        {/* 预览区域 */}
-        {showPreview && (
-          <>
-            <Divider orientation="vertical" flexItem />
-            <Box sx={{ 
-              flex: '1 1 50%',
-              overflow: 'auto',
-              p: 2,
-              bgcolor: theme.palette.background.paper,
-              transition: 'all 0.3s ease',
-              display: 'flex',
-              flexDirection: 'column'
-            }}>
-              <Box 
-                ref={previewRef}
-                sx={{ 
-                  flex: '1 1 auto', 
-                  overflow: 'auto',
-                  '& .wmde-markdown': {
-                    fontSize: `${fontSize}px`,
-                    lineHeight: 1.6,
-                    padding: '0 16px',
-                    color: theme.palette.text.primary,
-                    fontFamily: selectedFont,
-                    '& img': {
-                      maxWidth: '100%',
-                      height: 'auto',
-                      borderRadius: '4px',
-                      boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
-                    },
-                    '& table': {
-                      width: '100%',
-                      borderCollapse: 'collapse',
-                      marginBottom: '1rem',
-                      '& th, & td': {
-                        border: `1px solid ${theme.palette.divider}`,
-                        padding: '8px 12px'
-                      },
-                      '& th': {
-                        backgroundColor: theme.palette.action.hover
-                      }
-                    },
-                    '& blockquote': {
-                      borderLeft: `4px solid ${theme.palette.primary.main}`,
-                      backgroundColor: theme.palette.action.hover,
-                      padding: '12px 16px',
-                      margin: '16px 0'
-                    },
-                    '& code': {
-                      backgroundColor: theme.palette.action.hover,
-                      padding: '2px 4px',
-                      borderRadius: '3px',
-                      fontSize: '0.9em',
-                      fontFamily: FONT_OPTIONS[4].value // 代码使用等宽字体
-                    },
-                    '& pre': {
-                      backgroundColor: theme.palette.action.hover,
-                      padding: '16px',
-                      borderRadius: '4px',
-                      overflow: 'auto',
-                      '& code': {
-                        fontFamily: FONT_OPTIONS[4].value // 代码块使用等宽字体
-                      }
-                    }
-                  }
-                }}
+          {/* 视图模式（小屏幕上显示在设置菜单中） */}
+          <MenuItem sx={{ height: '50px' }}>
+            <ListItemIcon>
+              <SplitscreenIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText primary="视图模式" />
+          </MenuItem>
+          <MenuItem sx={{ px: 2, pt: 0, pb: 2 }}>
+            <ToggleButtonGroup
+              value={viewMode}
+              exclusive
+              onChange={handleViewModeChange}
+              size="small"
+              fullWidth
+            >
+              <ToggleButton value={ViewMode.Edit}>
+                <Tooltip title="编辑模式">
+                  <EditIcon fontSize="small" />
+                </Tooltip>
+              </ToggleButton>
+              <ToggleButton value={ViewMode.Split}>
+                <Tooltip title="分屏模式">
+                  <SplitscreenIcon fontSize="small" />
+                </Tooltip>
+              </ToggleButton>
+              <ToggleButton value={ViewMode.Preview}>
+                <Tooltip title="预览模式">
+                  <VisibilityIcon fontSize="small" />
+                </Tooltip>
+              </ToggleButton>
+            </ToggleButtonGroup>
+          </MenuItem>
+          
+          <Divider />
+          
+          <MenuItem sx={{ height: '50px' }}>
+            <ListItemIcon>
+              <FontDownloadIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText primary="字体选择" />
+          </MenuItem>
+          <MenuItem sx={{ px: 2, pt: 0, pb: 2 }}>
+            <FormControl fullWidth size="small">
+              <Select
+                value={selectedFont}
+                onChange={handleFontChange}
+                variant="outlined"
               >
-                <MDEditor.Markdown source={content} />
-              </Box>
-            </Box>
-          </>
-        )}
+                {FONT_OPTIONS.map((option) => (
+                  <MenuItem key={option.value} value={option.value}>
+                    {option.label}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </MenuItem>
+          
+          <Divider />
+          
+          <MenuItem onClick={toggleMiniMode}>
+            <ListItemIcon>
+              <CompressIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText primary="Mini模式" />
+            <Switch
+              edge="end"
+              checked={isMiniMode}
+              onChange={toggleMiniMode}
+              size="small"
+            />
+          </MenuItem>
+          
+          <MenuItem onClick={toggleDarkMode}>
+            <ListItemIcon>
+              {darkMode ? <DarkModeIcon fontSize="small" /> : <LightModeIcon fontSize="small" />}
+            </ListItemIcon>
+            <ListItemText primary="深色模式" />
+            <Switch
+              edge="end"
+              checked={darkMode}
+              onChange={toggleDarkMode}
+              size="small"
+            />
+          </MenuItem>
+        </Menu>
       </Box>
 
       <Snackbar 

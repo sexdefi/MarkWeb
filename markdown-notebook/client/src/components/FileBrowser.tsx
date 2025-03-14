@@ -4,7 +4,6 @@ import {
   ListItem,
   ListItemText,
   ListItemIcon,
-  ListItemButton,
   IconButton,
   TextField,
   Box,
@@ -18,9 +17,9 @@ import {
   Menu,
   MenuItem,
   Tooltip,
-  Fade,
   CircularProgress,
   Collapse,
+  useTheme
 } from '@mui/material';
 import {
   Folder as FolderIcon,
@@ -28,21 +27,13 @@ import {
   Add as AddIcon,
   MoreVert as MoreVertIcon,
   Refresh as RefreshIcon,
-  ChevronRight as ChevronRightIcon,
-  ExpandMore as ExpandMoreIcon,
 } from '@mui/icons-material';
-import { FileItem } from '../types';
+import { FileItem, FileBrowserProps } from '../types';
 import { getFiles, createDirectory, deleteFile, renameFile, saveFile } from '../services/api';
 
-interface FileBrowserProps {
-  onFileSelect: (file: FileItem) => void;
-}
-
-const FileBrowser: React.FC<FileBrowserProps> = ({ onFileSelect }) => {
+const FileBrowser: React.FC<FileBrowserProps> = ({ onFileSelect, selectedFile: propSelectedFile }) => {
   const [files, setFiles] = useState<FileItem[]>([]);
-  const [currentDirectory, setCurrentDirectory] = useState<string>('');
-  const [directoryStack, setDirectoryStack] = useState<string[]>([]);
-  const [selectedFile, setSelectedFile] = useState<FileItem | null>(null);
+  const [selectedFile, setSelectedFile] = useState<FileItem | null>(propSelectedFile);
   
   // Dialog states
   const [newFolderDialog, setNewFolderDialog] = useState<boolean>(false);
@@ -61,19 +52,20 @@ const FileBrowser: React.FC<FileBrowserProps> = ({ onFileSelect }) => {
   const [renameDialog, setRenameDialog] = useState<boolean>(false);
   const [newName, setNewName] = useState<string>('');
 
-  // 为每个文件夹添加展开/折叠状态
-  const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
   // 添加加载动画状态
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  
+  const theme = useTheme();
+
+  const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
+
   useEffect(() => {
     loadFiles();
-  }, [currentDirectory]);
+  }, []);
 
   const loadFiles = async () => {
     setIsLoading(true);
     try {
-      const fileList = await getFiles(currentDirectory);
+      const fileList = await getFiles('/');
       setFiles(fileList);
     } catch (error) {
       console.error('Error loading files:', error);
@@ -83,19 +75,21 @@ const FileBrowser: React.FC<FileBrowserProps> = ({ onFileSelect }) => {
   };
 
   const handleFileClick = (file: FileItem) => {
-    if (file.isDirectory) {
-      setDirectoryStack([...directoryStack, currentDirectory]);
-      setCurrentDirectory(file.path);
-    } else {
+    if (!file.isDirectory) {
       onFileSelect(file);
-      setSelectedFile(file);
+    } else {
+      // 如果是目录，切换展开/折叠状态
+      setExpandedFolders(prev => ({
+        ...prev,
+        [file.path]: !prev[file.path]
+      }));
     }
   };
 
   const handleCreateFolder = async () => {
     if (newFolderName.trim()) {
       try {
-        const path = currentDirectory ? `${currentDirectory}/${newFolderName}` : newFolderName;
+        const path = `/${newFolderName}`;
         await createDirectory(path);
         setNewFolderDialog(false);
         setNewFolderName('');
@@ -162,7 +156,7 @@ const FileBrowser: React.FC<FileBrowserProps> = ({ onFileSelect }) => {
           filename += '.md';
         }
         
-        const path = currentDirectory ? `${currentDirectory}/${filename}` : filename;
+        const path = `/${filename}`;
         await saveFile(path, '# ' + filename.replace(/\.md$/, ''));
         setNewFileDialog(false);
         setNewFileName('');
@@ -183,86 +177,45 @@ const FileBrowser: React.FC<FileBrowserProps> = ({ onFileSelect }) => {
     }
   };
 
-  // 处理文件夹展开/折叠
-  const toggleFolder = (path: string) => {
-    setExpandedFolders(prev => ({
-      ...prev,
-      [path]: !prev[path]
-    }));
-  };
 
   // 渲染文件列表项时添加动画效果
-  const renderFileItem = (file: FileItem, index: number) => (
-    <Fade in={true} style={{ transitionDelay: `${index * 30}ms` }} key={file.path}>
-      <ListItem
-        disablePadding
-        sx={{
-          borderRadius: '4px',
-          my: 0.5,
-          transition: 'all 0.2s',
-          ...(file.isDirectory && expandedFolders[file.path]
-            ? {
-                backgroundColor: 'rgba(0, 0, 0, 0.04)',
-              }
-            : {}),
-          ...(selectedFile && selectedFile.path === file.path
-            ? {
-                backgroundColor: 'rgba(25, 118, 210, 0.08)',
-                borderLeft: '3px solid #1976d2',
-              }
-            : {})
-        }}
-      >
-        {file.isDirectory && (
-          <IconButton 
-            size="small" 
-            onClick={(e) => {
-              e.stopPropagation();
-              toggleFolder(file.path);
-            }}
-            sx={{ ml: 1, mr: 1 }}
-          >
-            {expandedFolders[file.path] ? <ExpandMoreIcon /> : <ChevronRightIcon />}
-          </IconButton>
+  const renderFileItem = (file: FileItem) => (
+    <ListItem
+      key={file.path}
+      component="div"
+      onClick={() => handleFileClick(file)}
+      sx={{
+        bgcolor: selectedFile?.path === file.path ? 'action.selected' : 'transparent',
+        '&:hover': {
+          bgcolor: 'action.hover',
+        },
+        borderRadius: 1,
+        mb: 0.5,
+        border: selectedFile?.path === file.path ? `1px solid ${theme.palette.primary.main}` : 'none',
+        cursor: 'pointer'
+      }}
+    >
+      <ListItemIcon>
+        {file.isDirectory ? (
+          <FolderIcon color={selectedFile?.path === file.path ? "primary" : "info"} />
+        ) : (
+          <FileIcon color={selectedFile?.path === file.path ? "primary" : "info"} />
         )}
-        <ListItemButton
-          onClick={() => handleFileClick(file)}
-          sx={{
-            pl: file.isDirectory ? 1 : 2,
-            '&:hover': {
-              backgroundColor: 'rgba(0, 0, 0, 0.04)',
-              transform: 'translateX(4px)',
-            },
-          }}
-        >
-          <ListItemIcon>
-            {file.isDirectory ? (
-              <FolderIcon color="primary" />
-            ) : (
-              <FileIcon color={selectedFile?.path === file.path ? "primary" : "info"} />
-            )}
-          </ListItemIcon>
-          <ListItemText 
-            primary={file.name} 
-            primaryTypographyProps={{
-              sx: { 
-                fontWeight: selectedFile?.path === file.path ? 'bold' : 'regular',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }
-            }}
-          />
-        </ListItemButton>
-        <IconButton
-          size="small"
-          onClick={(e) => handleContextMenu(e, file)}
-          sx={{ mr: 1 }}
-        >
-          <MoreVertIcon fontSize="small" />
-        </IconButton>
-      </ListItem>
-    </Fade>
+      </ListItemIcon>
+      <ListItemText 
+        primary={file.name}
+        sx={{ 
+          fontWeight: selectedFile?.path === file.path ? 'bold' : 'normal'
+        }}
+      />
+      <IconButton
+        size="small"
+        onClick={(e) => handleContextMenu(e, file)}
+        sx={{ mr: 1 }}
+      >
+        <MoreVertIcon fontSize="small" />
+      </IconButton>
+    </ListItem>
   );
   
   // 渲染目录子项
@@ -278,9 +231,9 @@ const FileBrowser: React.FC<FileBrowserProps> = ({ onFileSelect }) => {
     return (
       <Collapse in={expandedFolders[parentPath]} timeout="auto" unmountOnExit>
         <List component="div" disablePadding sx={{ pl: 2 }}>
-          {children.map((child, index) => (
+          {children.map((child) => (
             <React.Fragment key={child.path}>
-              {renderFileItem(child, index)}
+              {renderFileItem(child)}
               {child.isDirectory && expandedFolders[child.path] && renderChildren(child.path, items)}
             </React.Fragment>
           ))}
@@ -295,9 +248,9 @@ const FileBrowser: React.FC<FileBrowserProps> = ({ onFileSelect }) => {
       file.path.split('/').length <= 2 && file.path !== '/'
     );
     
-    return rootItems.map((item, index) => (
+    return rootItems.map((item) => (
       <React.Fragment key={item.path}>
-        {renderFileItem(item, index)}
+        {renderFileItem(item)}
         {item.isDirectory && renderChildren(item.path, files)}
       </React.Fragment>
     ));

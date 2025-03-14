@@ -6,6 +6,13 @@ export interface FileItem {
   modifiedAt: string;
 }
 
+export interface FileBrowserProps {
+  onFileSelect: (file: FileItem) => void;
+  selectedFile: FileItem | null;
+}
+
+
+
 export interface FileContent {
   content: string;
 }
