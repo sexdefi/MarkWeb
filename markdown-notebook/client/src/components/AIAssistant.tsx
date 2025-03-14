@@ -18,7 +18,8 @@ import {
   Alert,
   Snackbar,
   Tooltip,
-  Toolbar
+  Toolbar,
+  Divider
 } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
 import SettingsIcon from '@mui/icons-material/Settings';
@@ -31,6 +32,12 @@ import FullscreenExitIcon from '@mui/icons-material/FullscreenExit';
 import FullscreenIcon from '@mui/icons-material/Fullscreen';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import AddCommentIcon from '@mui/icons-material/AddComment';
+import AssessmentIcon from '@mui/icons-material/Assessment';
+import BugReportIcon from '@mui/icons-material/BugReport';
+import SecurityIcon from '@mui/icons-material/Security';
+import SpeedIcon from '@mui/icons-material/Speed';
+import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
+import CodeIcon from '@mui/icons-material/Code';
 import { AIAssistantProps } from '../types';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -55,13 +62,34 @@ interface AIConfig {
 const DEFAULT_CONFIG: AIConfig = {
   apiKey: '',
   serverUrl: 'https://api.openai.com/v1',
-  systemPrompt: `你是一个专业的AI助手，可以帮助用户解答问题、分析文档。
-分析文件时，请注意：
-1. 首先概述文件的主要功能和用途
-2. 分析代码结构和关键组件
-3. 指出潜在的问题或可以改进的地方
-4. 给出具体的改进建议
-请使用 Markdown 格式输出，代码块请标注语言。`,
+  systemPrompt: `你是一个专业的AI编程助手，专注于代码分析和优化。在分析代码时，请遵循以下原则：
+
+1. 代码结构分析
+   - 评估代码的整体架构和设计模式
+   - 识别关键组件和它们之间的交互
+   - 分析代码的可维护性和可扩展性
+
+2. 性能优化建议
+   - 识别潜在的性能瓶颈
+   - 提供具体的优化方案
+   - 建议合适的算法和数据结构
+
+3. 代码质量评估
+   - 检查代码规范和最佳实践
+   - 识别潜在的bug和安全问题
+   - 提供重构建议
+
+4. 文档和注释建议
+   - 评估代码文档的完整性
+   - 建议需要补充的注释
+   - 提供API文档建议
+
+5. 测试建议
+   - 评估测试覆盖率
+   - 建议需要补充的测试用例
+   - 提供测试策略建议
+
+请使用 Markdown 格式输出，代码块请标注语言。对于每个建议，请提供具体的示例代码。`,
   model: 'gpt-3.5-turbo',
   temperature: 0.7,
   maxTokens: 2000
@@ -422,6 +450,120 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     }
   };
 
+  // 添加代码分析功能
+  const analyzeCode = async (content: string, type: 'complexity' | 'security' | 'performance' | 'quality') => {
+    if (!content.trim() || loading) return;
+
+    setLoading(true);
+    setError(null);
+
+    const analysisPrompts = {
+      complexity: '请分析以下代码的复杂度，包括：\n1. 圈复杂度\n2. 认知复杂度\n3. 代码依赖关系\n4. 模块耦合度',
+      security: '请分析以下代码的安全性，包括：\n1. 潜在的安全漏洞\n2. 输入验证\n3. 权限控制\n4. 数据安全',
+      performance: '请分析以下代码的性能，包括：\n1. 时间复杂度\n2. 空间复杂度\n3. 内存使用\n4. 并发处理',
+      quality: '请分析以下代码的质量，包括：\n1. 代码规范\n2. 设计模式\n3. 可维护性\n4. 可测试性'
+    };
+
+    try {
+      const requestBody = {
+        model: config.model,
+        messages: [
+          { role: 'system', content: config.systemPrompt },
+          { role: 'user', content: `${analysisPrompts[type]}\n\n${content}` }
+        ],
+        temperature: config.temperature,
+        max_tokens: config.maxTokens,
+        stream: true
+      };
+
+      const response = await fetch(`${config.serverUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${config.apiKey}`,
+          'Accept': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+          'Origin': window.location.origin
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      await handleStreamResponse(response, 'assistant');
+    } catch (err) {
+      console.error('代码分析失败:', err);
+      setError(err instanceof Error ? err.message : '代码分析失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 添加代码优化建议功能
+  const getOptimizationSuggestions = async (content: string) => {
+    if (!content.trim() || loading) return;
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const requestBody = {
+        model: config.model,
+        messages: [
+          { role: 'system', content: config.systemPrompt },
+          { role: 'user', content: `请对以下代码提供具体的优化建议，包括：
+
+1. 代码重构建议
+   - 识别可以提取的公共方法
+   - 建议更好的设计模式
+   - 提供具体的重构示例
+
+2. 性能优化建议
+   - 算法优化
+   - 数据结构优化
+   - 缓存策略
+   - 并发处理
+
+3. 代码质量改进
+   - 命名规范
+   - 代码组织
+   - 错误处理
+   - 日志记录
+
+4. 测试建议
+   - 单元测试
+   - 集成测试
+   - 性能测试
+   - 测试用例设计
+
+请为每个建议提供具体的代码示例。\n\n${content}` }
+        ],
+        temperature: config.temperature,
+        max_tokens: config.maxTokens,
+        stream: true
+      };
+
+      const response = await fetch(`${config.serverUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${config.apiKey}`,
+          'Accept': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+          'Origin': window.location.origin
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      await handleStreamResponse(response, 'assistant');
+    } catch (err) {
+      console.error('获取优化建议失败:', err);
+      setError(err instanceof Error ? err.message : '获取优化建议失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // 添加快捷键监听
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -634,7 +776,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
         <div ref={messagesEndRef} />
       </Box>
 
-      {/* 工具栏 */}
+      {/* 更新工具栏 */}
       <Toolbar 
         variant="dense" 
         sx={{ 
@@ -646,6 +788,75 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
           gap: 1
         }}
       >
+        <Tooltip title="复杂度分析">
+          <IconButton 
+            onClick={() => {
+              const content = getCurrentContent?.();
+              if (content) analyzeCode(content, 'complexity');
+            }}
+            disabled={loading}
+          >
+            <AssessmentIcon />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title="安全性分析">
+          <IconButton 
+            onClick={() => {
+              const content = getCurrentContent?.();
+              if (content) analyzeCode(content, 'security');
+            }}
+            disabled={loading}
+          >
+            <SecurityIcon />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title="性能分析">
+          <IconButton 
+            onClick={() => {
+              const content = getCurrentContent?.();
+              if (content) analyzeCode(content, 'performance');
+            }}
+            disabled={loading}
+          >
+            <SpeedIcon />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title="代码质量分析">
+          <IconButton 
+            onClick={() => {
+              const content = getCurrentContent?.();
+              if (content) analyzeCode(content, 'quality');
+            }}
+            disabled={loading}
+          >
+            <BugReportIcon />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title="代码优化建议">
+          <IconButton 
+            onClick={() => {
+              const content = getCurrentContent?.();
+              if (content) getOptimizationSuggestions(content);
+            }}
+            disabled={loading}
+          >
+            <AutoFixHighIcon />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title="代码示例">
+          <IconButton 
+            onClick={() => {
+              const content = getCurrentContent?.();
+              if (content) {
+                setInput(prev => `${prev}\n\n请为以下代码提供最佳实践示例：\n\n${content}`);
+              }
+            }}
+            disabled={loading}
+          >
+            <CodeIcon />
+          </IconButton>
+        </Tooltip>
+        <Divider orientation="vertical" flexItem />
         <Tooltip title="添加文章内容到上下文">
           <IconButton onClick={handleAddArticle} disabled={loading}>
             <ArticleIcon />
