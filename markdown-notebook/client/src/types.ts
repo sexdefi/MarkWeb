@@ -20,4 +20,6 @@ export interface MarkdownEditorProps {
 export interface AIAssistantProps {
   onClose?: () => void;
   id?: string;
+  getCurrentContent?: () => string;
+  getContentRange?: (start: number, end: number) => Promise<string>;
 } 

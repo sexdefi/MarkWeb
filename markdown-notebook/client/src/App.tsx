@@ -8,6 +8,7 @@ import { FileItem } from './types'
 const App: React.FC = () => {
   const [selectedFile, setSelectedFile] = useState<FileItem | null>(null)
   const [showAIAssistant, setShowAIAssistant] = useState(false)
+  const [content, setContent] = useState<string>('')
   const prefersDarkMode = useMediaQuery('(prefers-color-scheme: dark)')
 
   const theme = createTheme({
@@ -34,6 +35,7 @@ const App: React.FC = () => {
           <MarkdownEditor 
             selectedFile={selectedFile}
             onAnalyzeFile={(content) => {
+              setContent(content)
               setShowAIAssistant(true)
               // 将文件内容传递给AI助手
               const aiAssistantElement = document.getElementById('ai-assistant')
@@ -49,6 +51,19 @@ const App: React.FC = () => {
             <AIAssistant 
               onClose={() => setShowAIAssistant(false)}
               id="ai-assistant"
+              getCurrentContent={() => content}
+              getContentRange={async (start, end) => {
+                if (!selectedFile) return '';
+                try {
+                  const response = await fetch(`/api/files/content/${selectedFile.path}?start=${start}&end=${end}`);
+                  if (!response.ok) throw new Error('获取内容失败');
+                  const data = await response.json();
+                  return data.content;
+                } catch (error) {
+                  console.error('获取内容范围失败:', error);
+                  return '';
+                }
+              }}
             />
           </Box>
         )}

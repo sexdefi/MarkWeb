@@ -16,12 +16,17 @@ import {
   Select,
   MenuItem,
   Alert,
-  Snackbar
+  Snackbar,
+  Tooltip,
+  Toolbar
 } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
 import SettingsIcon from '@mui/icons-material/Settings';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import CloseIcon from '@mui/icons-material/Close';
+import ArticleIcon from '@mui/icons-material/Article';
+import ContentPasteIcon from '@mui/icons-material/ContentPaste';
+import FormatListNumberedIcon from '@mui/icons-material/FormatListNumbered';
 import { AIAssistantProps } from '../types';
 
 interface Message {
@@ -49,7 +54,70 @@ const DEFAULT_CONFIG: AIConfig = {
   maxTokens: 2000
 };
 
-const AIAssistant: React.FC<AIAssistantProps> = ({ onClose, id = 'ai-assistant' }) => {
+interface RangeDialogProps {
+  open: boolean;
+  onClose: () => void;
+  onConfirm: (start: number, end: number) => void;
+}
+
+const RangeDialog: React.FC<RangeDialogProps> = ({ open, onClose, onConfirm }) => {
+  const [startLine, setStartLine] = useState<string>('');
+  const [endLine, setEndLine] = useState<string>('');
+
+  const handleConfirm = () => {
+    const start = parseInt(startLine);
+    const end = parseInt(endLine);
+    if (!isNaN(start) && !isNaN(end) && start > 0 && end >= start) {
+      onConfirm(start, end);
+      onClose();
+      setStartLine('');
+      setEndLine('');
+    }
+  };
+
+  return (
+    <Dialog open={open} onClose={onClose}>
+      <DialogTitle>选择行数范围</DialogTitle>
+      <DialogContent>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
+          <TextField
+            label="起始行"
+            type="number"
+            value={startLine}
+            onChange={(e) => setStartLine(e.target.value)}
+            inputProps={{ min: 1 }}
+            fullWidth
+          />
+          <TextField
+            label="结束行"
+            type="number"
+            value={endLine}
+            onChange={(e) => setEndLine(e.target.value)}
+            inputProps={{ min: 1 }}
+            fullWidth
+          />
+        </Box>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>取消</Button>
+        <Button 
+          onClick={handleConfirm}
+          disabled={!startLine || !endLine || parseInt(startLine) > parseInt(endLine)}
+          variant="contained"
+        >
+          确定
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
+
+const AIAssistant: React.FC<AIAssistantProps> = ({ 
+  onClose, 
+  id = 'ai-assistant',
+  getCurrentContent,
+  getContentRange
+}) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -58,6 +126,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ onClose, id = 'ai-assistant' 
   const [error, setError] = useState<string | null>(null);
   const [currentStreamingMessage, setCurrentStreamingMessage] = useState<string>('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [rangeDialogOpen, setRangeDialogOpen] = useState(false);
 
   // 从localStorage加载配置
   useEffect(() => {
@@ -262,6 +331,51 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ onClose, id = 'ai-assistant' 
     }
   };
 
+  // 添加文章内容到上下文
+  const handleAddArticle = async () => {
+    if (!getCurrentContent) {
+      setError('无法获取文章内容');
+      return;
+    }
+
+    const content = getCurrentContent();
+    if (!content) {
+      setError('当前文章没有内容');
+      return;
+    }
+
+    if (!input) {
+      setInput(`当前文章的内容是：\n\n${content}`);
+    } else {
+      setInput(prev => `${prev}\n\n当前文章的内容是：\n\n${content}`);
+    }
+  };
+
+  // 添加指定范围的内容
+  const handleAddRange = async (start: number, end: number) => {
+    if (!getContentRange) {
+      setError('无法获取文章内容');
+      return;
+    }
+
+    try {
+      const content = await getContentRange(start, end);
+      if (!content) {
+        setError('指定范围内没有内容');
+        return;
+      }
+
+      const range = `当前文章第 ${start} 到 ${end} 行的内容是：\n\n${content}`;
+      if (!input) {
+        setInput(range);
+      } else {
+        setInput(prev => `${prev}\n\n${range}`);
+      }
+    } catch (error) {
+      setError('获取内容范围失败');
+    }
+  };
+
   return (
     <Paper 
       id={id}
@@ -391,6 +505,45 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ onClose, id = 'ai-assistant' 
         <div ref={messagesEndRef} />
       </Box>
 
+      {/* 工具栏 */}
+      <Toolbar 
+        variant="dense" 
+        sx={{ 
+          borderTop: 1, 
+          borderBottom: 1, 
+          borderColor: 'divider',
+          px: 2,
+          minHeight: '48px',
+          gap: 1
+        }}
+      >
+        <Tooltip title="添加文章内容到上下文">
+          <IconButton onClick={handleAddArticle} disabled={loading}>
+            <ArticleIcon />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title="添加指定范围内容到上下文">
+          <IconButton onClick={() => setRangeDialogOpen(true)} disabled={loading}>
+            <FormatListNumberedIcon />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title="粘贴剪贴板内容">
+          <IconButton 
+            onClick={async () => {
+              try {
+                const text = await navigator.clipboard.readText();
+                setInput(prev => prev + text);
+              } catch (err) {
+                setError('无法访问剪贴板');
+              }
+            }}
+            disabled={loading}
+          >
+            <ContentPasteIcon />
+          </IconButton>
+        </Tooltip>
+      </Toolbar>
+
       {/* 输入区域 */}
       <Box sx={{ p: 2, borderTop: 1, borderColor: 'divider' }}>
         <Box sx={{ display: 'flex', gap: 1 }}>
@@ -487,6 +640,13 @@ const AIAssistant: React.FC<AIAssistantProps> = ({ onClose, id = 'ai-assistant' 
           <Button onClick={saveConfig} variant="contained">保存</Button>
         </DialogActions>
       </Dialog>
+
+      {/* 范围选择对话框 */}
+      <RangeDialog
+        open={rangeDialogOpen}
+        onClose={() => setRangeDialogOpen(false)}
+        onConfirm={handleAddRange}
+      />
 
       {/* 错误提示 */}
       <Snackbar 
