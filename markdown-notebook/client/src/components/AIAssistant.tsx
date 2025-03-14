@@ -32,6 +32,9 @@ import FullscreenIcon from '@mui/icons-material/Fullscreen';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import AddCommentIcon from '@mui/icons-material/AddComment';
 import { AIAssistantProps } from '../types';
+import ReactMarkdown from 'react-markdown';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { materialDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -52,7 +55,13 @@ interface AIConfig {
 const DEFAULT_CONFIG: AIConfig = {
   apiKey: '',
   serverUrl: 'https://api.openai.com/v1',
-  systemPrompt: '你是一个专业的AI助手，可以帮助用户解答问题、分析文档。',
+  systemPrompt: `你是一个专业的AI助手，可以帮助用户解答问题、分析文档。
+分析文件时，请注意：
+1. 首先概述文件的主要功能和用途
+2. 分析代码结构和关键组件
+3. 指出潜在的问题或可以改进的地方
+4. 给出具体的改进建议
+请使用 Markdown 格式输出，代码块请标注语言。`,
   model: 'gpt-3.5-turbo',
   temperature: 0.7,
   maxTokens: 2000
@@ -117,6 +126,30 @@ const RangeDialog: React.FC<RangeDialogProps> = ({ open, onClose, onConfirm }) =
 };
 
 const MAX_CONTEXT_MESSAGES = 10; // 限制上下文消息数量
+
+// 定义代码组件的属性类型
+interface CodeComponentProps extends React.HTMLAttributes<HTMLElement> {
+  inline?: boolean;
+  className?: string;
+}
+
+// 修改 ReactMarkdown 组件的代码渲染部分
+const MarkdownCodeComponent = ({ inline, className, children }: CodeComponentProps) => {
+  const match = /language-(\w+)/.exec(className || '');
+  return !inline && match ? (
+    <SyntaxHighlighter
+      style={materialDark}
+      language={match[1]}
+      PreTag="div"
+    >
+      {String(children).replace(/\n$/, '')}
+    </SyntaxHighlighter>
+  ) : (
+    <code className={className}>
+      {children}
+    </code>
+  );
+};
 
 const AIAssistant: React.FC<AIAssistantProps> = ({ 
   onClose, 
@@ -389,6 +422,19 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
     }
   };
 
+  // 添加快捷键监听
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Alt/Option + Enter 插入换行
+      if (e.key === 'Enter' && (e.altKey || e.metaKey)) {
+        setInput(prev => prev + '\n');
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   return (
     <Paper 
       id={id}
@@ -468,12 +514,31 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
                     p: 2,
                     bgcolor: message.role === 'user' ? 'primary.light' : 'background.paper',
                     color: message.role === 'user' ? 'primary.contrastText' : 'text.primary',
-                    borderRadius: 2
+                    borderRadius: 2,
+                    '& pre': {
+                      margin: 0,
+                      padding: 1,
+                      borderRadius: 1,
+                      bgcolor: 'background.paper',
+                    },
+                    '& code': {
+                      fontFamily: 'monospace',
+                    }
                   }}
                 >
-                  <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>
-                    {message.content}
-                  </Typography>
+                  {message.role === 'assistant' ? (
+                    <ReactMarkdown
+                      components={{
+                        code: MarkdownCodeComponent
+                      }}
+                    >
+                      {message.content}
+                    </ReactMarkdown>
+                  ) : (
+                    <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>
+                      {message.content}
+                    </Typography>
+                  )}
                   <Typography variant="caption" sx={{ mt: 1, display: 'block' }}>
                     {message.timestamp.toLocaleTimeString()}
                   </Typography>
@@ -546,10 +611,14 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
                   borderRadius: 2
                 }}
               >
-                <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>
+                <ReactMarkdown
+                  components={{
+                    code: MarkdownCodeComponent
+                  }}
+                >
                   {currentStreamingMessage}
-                  <span className="cursor">▋</span>
-                </Typography>
+                </ReactMarkdown>
+                <span className="cursor">▋</span>
               </Paper>
             </Box>
           </Box>
@@ -619,7 +688,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
                 handleSend();
               }
             }}
-            placeholder="输入消息..."
+            placeholder="输入消息...(Alt/Option + Enter 插入换行)"
             disabled={loading}
           />
           <IconButton 
