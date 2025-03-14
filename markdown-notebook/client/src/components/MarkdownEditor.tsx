@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Paper, Box, Typography, Button, Toolbar, Snackbar, Alert, IconButton, Divider, Tooltip, Menu, MenuItem, Slider, Fade } from '@mui/material';
+import { Paper, Box, Typography, Button, Toolbar, Snackbar, Alert, IconButton, Divider, Tooltip, Menu, MenuItem, Slider, Fade, useTheme } from '@mui/material';
 import MDEditor, { commands } from '@uiw/react-md-editor';
 import { FileItem } from '../types';
 import { getFileContent, saveFile } from '../services/api';
@@ -32,6 +32,11 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
   const [fontSize, setFontSize] = useState<number>(14);
   const [fontSizeMenuAnchor, setFontSizeMenuAnchor] = useState<null | HTMLElement>(null);
   const [isExporting, setIsExporting] = useState<boolean>(false);
+
+  // 添加自动保存相关状态
+  const [autoSaveTimer, setAutoSaveTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
+  const [lastSavedTime, setLastSavedTime] = useState<Date | null>(null);
+  const theme = useTheme();
 
   useEffect(() => {
     if (selectedFile && !selectedFile.isDirectory) {
@@ -71,6 +76,7 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
     try {
       await saveFile(selectedFile.path, content);
       setIsModified(false);
+      setLastSavedTime(new Date());
       showSnackbar('文件保存成功!', 'success');
     } catch (error) {
       console.error('Error saving file:', error);
@@ -322,6 +328,75 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
     }
   };
 
+  // 自动保存功能
+  useEffect(() => {
+    if (isModified) {
+      // 清除之前的定时器
+      if (autoSaveTimer) {
+        clearTimeout(autoSaveTimer);
+      }
+      
+      // 设置新的定时器，2秒后自动保存
+      const timer = setTimeout(() => {
+        if (isModified && !loading) {
+          handleSave();
+        }
+      }, 2000);
+      
+      setAutoSaveTimer(timer);
+    }
+    
+    return () => {
+      if (autoSaveTimer) {
+        clearTimeout(autoSaveTimer);
+      }
+    };
+  }, [content, isModified]);
+
+  // 优化快捷键处理
+  const handleEditorKeyDown = (event: KeyboardEvent) => {
+    // 已有的快捷键
+    if ((event.ctrlKey || event.metaKey) && event.key === 's') {
+      event.preventDefault();
+      if (isModified && !loading) {
+        handleSave();
+      }
+    }
+    if ((event.ctrlKey || event.metaKey) && event.key === 'a') {
+      event.preventDefault();
+      selectAllText();
+    }
+    if ((event.ctrlKey || event.metaKey) && event.key === 'p') {
+      event.preventDefault();
+      togglePreview();
+    }
+    
+    // 新增快捷键
+    // Ctrl/Cmd + Z: 撤销
+    if ((event.ctrlKey || event.metaKey) && event.key === 'z' && !event.shiftKey) {
+      event.preventDefault();
+      // TODO: 实现撤销功能
+    }
+    // Ctrl/Cmd + Shift + Z: 重做
+    if ((event.ctrlKey || event.metaKey) && event.key === 'z' && event.shiftKey) {
+      event.preventDefault();
+      // TODO: 实现重做功能
+    }
+    // Ctrl/Cmd + F: 查找
+    if ((event.ctrlKey || event.metaKey) && event.key === 'f') {
+      event.preventDefault();
+      // TODO: 实现查找功能
+    }
+  };
+
+  useEffect(() => {
+    // 添加全局快捷键监听
+    document.addEventListener('keydown', handleEditorKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleEditorKeyDown);
+    };
+  }, [isModified, loading]); // 依赖项包含会影响处理函数的状态
+
   if (!selectedFile) {
     return (
       <Paper 
@@ -371,40 +446,56 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
         flexDirection: 'column',
         position: 'relative',
         overflow: 'hidden',
-        transition: 'all 0.3s ease' // 添加过渡效果
+        transition: 'all 0.3s ease',
+        bgcolor: theme.palette.background.default
       }}
     >
       <Toolbar 
         variant="dense" 
         sx={{ 
           justifyContent: 'space-between', 
-          bgcolor: '#f5f5f5',
+          bgcolor: theme.palette.background.paper,
           minHeight: '48px',
           flex: '0 0 auto',
           boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-          p: { xs: 0.5, sm: 1 }, // 响应式内边距
-          overflow: 'hidden'
+          p: { xs: 0.5, sm: 1 },
+          overflow: 'hidden',
+          borderBottom: `1px solid ${theme.palette.divider}`
         }}
       >
         <Box sx={{ 
           display: 'flex', 
           alignItems: 'center',
           flexGrow: 1,
-          minWidth: 0, // 允许容器缩小
-          gap: { xs: 0.5, sm: 1 } // 响应式间距
+          minWidth: 0,
+          gap: { xs: 0.5, sm: 1 }
         }}>
           <Typography 
             variant="subtitle1" 
             sx={{ 
               fontWeight: 'medium',
-              flexShrink: 1, // 允许文字缩小
+              flexShrink: 1,
               minWidth: 0,
               overflow: 'hidden',
               textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap'
+              whiteSpace: 'nowrap',
+              color: theme.palette.text.primary
             }}
           >
             {selectedFile.name} {isModified ? '(已修改)' : ''}
+            {lastSavedTime && !isModified && (
+              <Typography 
+                component="span" 
+                variant="caption" 
+                sx={{ 
+                  ml: 1, 
+                  color: theme.palette.text.secondary,
+                  display: { xs: 'none', sm: 'inline' }
+                }}
+              >
+                (上次保存: {lastSavedTime.toLocaleTimeString()})
+              </Typography>
+            )}
           </Typography>
           
           <Box sx={{ 
@@ -476,9 +567,53 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
         display: 'flex', 
         flexDirection: 'row',
         overflow: 'hidden',
-        position: 'relative'
+        position: 'relative',
+        bgcolor: theme.palette.background.default
       }}>
-        {/* 编辑区 */}
+        {/* 添加字体大小菜单 */}
+        <Menu
+          anchorEl={fontSizeMenuAnchor}
+          open={Boolean(fontSizeMenuAnchor)}
+          onClose={handleFontSizeMenuClose}
+          TransitionComponent={Fade}
+          sx={{
+            '& .MuiPaper-root': {
+              boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+              borderRadius: '8px'
+            }
+          }}
+        >
+          <MenuItem sx={{ width: 200, padding: '16px' }}>
+            <Box sx={{ width: '100%' }}>
+              <Typography variant="body2" sx={{ mb: 1, fontWeight: 'medium' }}>
+                字体大小: {fontSize}px
+              </Typography>
+              <Slider
+                value={fontSize}
+                onChange={handleFontSizeChange}
+                min={10}
+                max={24}
+                step={1}
+                marks={[
+                  { value: 12, label: '12' },
+                  { value: 14, label: '14' },
+                  { value: 16, label: '16' },
+                  { value: 18, label: '18' },
+                  { value: 20, label: '20' }
+                ]}
+                valueLabelDisplay="auto"
+                size="small"
+                sx={{
+                  '& .MuiSlider-markLabel': {
+                    fontSize: '0.75rem'
+                  }
+                }}
+              />
+            </Box>
+          </MenuItem>
+        </Menu>
+
+        {/* 编辑器区域 */}
         <Box 
           ref={editorRef}
           sx={{ 
@@ -486,7 +621,8 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
             display: 'flex',
             flexDirection: 'column',
             overflow: 'hidden',
-            transition: 'all 0.3s ease'
+            transition: 'all 0.3s ease',
+            bgcolor: theme.palette.background.paper
           }}
         >
           <MDEditor
@@ -502,6 +638,10 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
               style: {
                 fontSize: `${fontSize}px`,
                 lineHeight: '1.6',
+                padding: '12px 16px',
+                color: theme.palette.text.primary,
+                backgroundColor: theme.palette.background.paper,
+                borderColor: theme.palette.divider
               }
             }}
             commands={[
@@ -517,13 +657,21 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
               commands.codeBlock,
               commands.image,
               commands.divider,
-              commands.divider,
               commands.help
+            ]}
+            extraCommands={[
+              {
+                name: 'save',
+                keyCommand: 'save',
+                buttonProps: { 'aria-label': '保存' },
+                icon: <SaveIcon />,
+                execute: handleSave,
+              }
             ]}
           />
         </Box>
 
-        {/* 预览区 */}
+        {/* 预览区域 */}
         {showPreview && (
           <>
             <Divider orientation="vertical" flexItem />
@@ -531,7 +679,7 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
               flex: '1 1 50%',
               overflow: 'auto',
               p: 2,
-              bgcolor: '#ffffff',
+              bgcolor: theme.palette.background.paper,
               transition: 'all 0.3s ease',
               display: 'flex',
               flexDirection: 'column'
@@ -544,7 +692,44 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
                   '& .wmde-markdown': {
                     fontSize: `${fontSize}px`,
                     lineHeight: 1.6,
-                    padding: '0 16px'
+                    padding: '0 16px',
+                    color: theme.palette.text.primary,
+                    '& img': {
+                      maxWidth: '100%',
+                      height: 'auto',
+                      borderRadius: '4px',
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+                    },
+                    '& table': {
+                      width: '100%',
+                      borderCollapse: 'collapse',
+                      marginBottom: '1rem',
+                      '& th, & td': {
+                        border: `1px solid ${theme.palette.divider}`,
+                        padding: '8px 12px'
+                      },
+                      '& th': {
+                        backgroundColor: theme.palette.action.hover
+                      }
+                    },
+                    '& blockquote': {
+                      borderLeft: `4px solid ${theme.palette.primary.main}`,
+                      backgroundColor: theme.palette.action.hover,
+                      padding: '12px 16px',
+                      margin: '16px 0'
+                    },
+                    '& code': {
+                      backgroundColor: theme.palette.action.hover,
+                      padding: '2px 4px',
+                      borderRadius: '3px',
+                      fontSize: '0.9em'
+                    },
+                    '& pre': {
+                      backgroundColor: theme.palette.action.hover,
+                      padding: '16px',
+                      borderRadius: '4px',
+                      overflow: 'auto'
+                    }
                   }
                 }}
               >
@@ -562,10 +747,10 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
         sx={{
           '& .MuiAlert-filledSuccess': {
-            background: 'linear-gradient(45deg, #4caf50 30%, #81c784 90%)'
+            background: `linear-gradient(45deg, ${theme.palette.success.main} 30%, ${theme.palette.success.light} 90%)`
           },
           '& .MuiAlert-filledError': {
-            background: 'linear-gradient(45deg, #f44336 30%, #e57373 90%)'
+            background: `linear-gradient(45deg, ${theme.palette.error.main} 30%, ${theme.palette.error.light} 90%)`
           }
         }}
       >
@@ -573,7 +758,10 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = ({ selectedFile }) => {
           onClose={handleSnackbarClose} 
           severity={snackbarSeverity}
           variant="filled"
-          sx={{ width: '100%' }}
+          sx={{ 
+            width: '100%',
+            boxShadow: theme.shadows[3]
+          }}
         >
           {snackbarMessage}
         </Alert>
