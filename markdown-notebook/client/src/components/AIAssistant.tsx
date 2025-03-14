@@ -27,6 +27,10 @@ import CloseIcon from '@mui/icons-material/Close';
 import ArticleIcon from '@mui/icons-material/Article';
 import ContentPasteIcon from '@mui/icons-material/ContentPaste';
 import FormatListNumberedIcon from '@mui/icons-material/FormatListNumbered';
+import FullscreenExitIcon from '@mui/icons-material/FullscreenExit';
+import FullscreenIcon from '@mui/icons-material/Fullscreen';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import AddCommentIcon from '@mui/icons-material/AddComment';
 import { AIAssistantProps } from '../types';
 
 interface Message {
@@ -112,6 +116,8 @@ const RangeDialog: React.FC<RangeDialogProps> = ({ open, onClose, onConfirm }) =
   );
 };
 
+const MAX_CONTEXT_MESSAGES = 10; // 限制上下文消息数量
+
 const AIAssistant: React.FC<AIAssistantProps> = ({ 
   onClose, 
   id = 'ai-assistant',
@@ -125,6 +131,7 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
   const [configOpen, setConfigOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentStreamingMessage, setCurrentStreamingMessage] = useState<string>('');
+  const [isFullScreen, setIsFullScreen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [rangeDialogOpen, setRangeDialogOpen] = useState(false);
 
@@ -290,7 +297,13 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
       timestamp: new Date()
     };
 
-    setMessages(prev => [...prev, userMessage]);
+    // 限制上下文消息数量
+    let updatedMessages = [...messages, userMessage];
+    if (updatedMessages.length > MAX_CONTEXT_MESSAGES) {
+      updatedMessages = updatedMessages.slice(-MAX_CONTEXT_MESSAGES);
+    }
+
+    setMessages(updatedMessages);
     const currentInput = input;
     setInput('');
     setLoading(true);
@@ -381,10 +394,15 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
       id={id}
       elevation={3} 
       sx={{ 
-        height: '100%', 
+        height: isFullScreen ? '100vh' : '100%', 
+        width: isFullScreen ? '100vw' : '100%',
         display: 'flex', 
         flexDirection: 'column',
-        bgcolor: 'background.paper'
+        bgcolor: 'background.paper',
+        position: isFullScreen ? 'fixed' : 'relative',
+        top: isFullScreen ? 0 : 'auto',
+        left: isFullScreen ? 0 : 'auto',
+        zIndex: isFullScreen ? 1300 : 'auto',
       }}
     >
       {/* 顶部工具栏 */}
@@ -398,6 +416,9 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
         <Typography variant="h6" sx={{ flexGrow: 1 }}>
           AI助手
         </Typography>
+        <IconButton onClick={() => setIsFullScreen(!isFullScreen)}>
+          {isFullScreen ? <FullscreenExitIcon /> : <FullscreenIcon />}
+        </IconButton>
         <IconButton onClick={() => setConfigOpen(true)}>
           <SettingsIcon />
         </IconButton>
@@ -424,36 +445,75 @@ const AIAssistant: React.FC<AIAssistantProps> = ({
               display: 'flex',
               flexDirection: 'column',
               alignItems: message.role === 'user' ? 'flex-end' : 'flex-start',
-              gap: 1
+              gap: 1,
+              width: '100%'
             }}
           >
             <Box
               sx={{
                 display: 'flex',
-                alignItems: 'center',
+                alignItems: 'flex-start',
                 gap: 1,
-                maxWidth: '80%'
+                maxWidth: '80%',
+                width: message.role === 'assistant' ? '100%' : 'auto'
               }}
             >
               {message.role === 'assistant' && (
-                <SmartToyIcon color="primary" />
+                <SmartToyIcon color="primary" sx={{ mt: 1 }} />
               )}
-              <Paper
-                elevation={1}
-                sx={{
-                  p: 2,
-                  bgcolor: message.role === 'user' ? 'primary.light' : 'background.paper',
-                  color: message.role === 'user' ? 'primary.contrastText' : 'text.primary',
-                  borderRadius: 2
-                }}
-              >
-                <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>
-                  {message.content}
-                </Typography>
-                <Typography variant="caption" sx={{ mt: 1, display: 'block' }}>
-                  {message.timestamp.toLocaleTimeString()}
-                </Typography>
-              </Paper>
+              <Box sx={{ flex: 1 }}>
+                <Paper
+                  elevation={1}
+                  sx={{
+                    p: 2,
+                    bgcolor: message.role === 'user' ? 'primary.light' : 'background.paper',
+                    color: message.role === 'user' ? 'primary.contrastText' : 'text.primary',
+                    borderRadius: 2
+                  }}
+                >
+                  <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>
+                    {message.content}
+                  </Typography>
+                  <Typography variant="caption" sx={{ mt: 1, display: 'block' }}>
+                    {message.timestamp.toLocaleTimeString()}
+                  </Typography>
+                </Paper>
+                {message.role === 'assistant' && (
+                  <Toolbar 
+                    variant="dense" 
+                    sx={{ 
+                      minHeight: '40px',
+                      px: 1,
+                      gap: 1
+                    }}
+                  >
+                    <Tooltip title="复制到剪贴板">
+                      <IconButton 
+                        size="small"
+                        onClick={() => {
+                          navigator.clipboard.writeText(message.content)
+                            .then(() => {
+                              // 可以添加复制成功的提示
+                            })
+                            .catch(() => setError('复制失败'));
+                        }}
+                      >
+                        <ContentCopyIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="添加到输入框">
+                      <IconButton 
+                        size="small"
+                        onClick={() => {
+                          setInput(prev => prev + (prev ? '\n\n' : '') + message.content);
+                        }}
+                      >
+                        <AddCommentIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  </Toolbar>
+                )}
+              </Box>
             </Box>
           </Box>
         ))}
